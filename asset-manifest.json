@@ -1,15 +1,15 @@
 {
   "files": {
-    "main.css": "/La-juanita-website/static/css/main.526be186.css",
-    "main.js": "/La-juanita-website/static/js/main.931c1f41.js",
+    "main.css": "/La-juanita-website/static/css/main.0ce3968b.css",
+    "main.js": "/La-juanita-website/static/js/main.d57bd672.js",
     "static/js/453.d7446e4a.chunk.js": "/La-juanita-website/static/js/453.d7446e4a.chunk.js",
     "index.html": "/La-juanita-website/index.html",
-    "main.526be186.css.map": "/La-juanita-website/static/css/main.526be186.css.map",
-    "main.931c1f41.js.map": "/La-juanita-website/static/js/main.931c1f41.js.map",
+    "main.0ce3968b.css.map": "/La-juanita-website/static/css/main.0ce3968b.css.map",
+    "main.d57bd672.js.map": "/La-juanita-website/static/js/main.d57bd672.js.map",
     "453.d7446e4a.chunk.js.map": "/La-juanita-website/static/js/453.d7446e4a.chunk.js.map"
   },
   "entrypoints": [
-    "static/css/main.526be186.css",
-    "static/js/main.931c1f41.js"
+    "static/css/main.0ce3968b.css",
+    "static/js/main.d57bd672.js"
   ]
 }
