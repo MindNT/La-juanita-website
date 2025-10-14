@@ -76,44 +76,44 @@ function App() {
                onError={handleImgError} />
           
           {/* Segunda fila */}
-          <img src={assetUrl('/images/logo.png')} alt="" 
+          {/*<img src={assetUrl('/images/logo.png')} alt="" 
                className="absolute w-72 h-auto top-[15%] left-[10%] -rotate-[12deg]"
-               onError={handleImgError} />
+               onError={handleImgError} />*/}
           
           {/* Tercera fila */}
-          <img src={assetUrl('/images/logo.png')} alt="" 
+          {/*<img src={assetUrl('/images/logo.png')} alt="" 
                className="absolute w-76 h-auto top-[25%] right-[12%] rotate-[-30deg]"
-               onError={handleImgError} />
+               onError={handleImgError} />*/}
           
           {/* Cuarta fila */}
-          <img src={assetUrl('/images/logo.png')} alt="" 
+          {/*<img src={assetUrl('/images/logo.png')} alt="" 
                className="absolute w-72 h-auto top-[35%] left-[18%] -rotate-[-45deg]"
-               onError={handleImgError} />
+               onError={handleImgError} />*/}
           
           {/* Quinta fila */}
-          <img src={assetUrl('/images/logo.png')} alt="" 
+          {/*<img src={assetUrl('/images/logo.png')} alt="" 
                className="absolute w-60 h-auto top-[45%] right-[50%] rotate-[0deg]"
-               onError={handleImgError} />
+               onError={handleImgError} />*/}
           
           {/* Sexta fila */}
-          <img src={assetUrl('/images/logo.png')} alt="" 
+          {/*<img src={assetUrl('/images/logo.png')} alt="" 
                className="absolute w-76 h-auto top-[55%] left-[15%] -rotate-[15deg]"
-               onError={handleImgError} />
+               onError={handleImgError} />*/}
           
           {/* Séptima fila */}
-          <img src={assetUrl('/images/logo.png')} alt="" 
+          {/*<img src={assetUrl('/images/logo.png')} alt="" 
                className="absolute w-80 h-auto top-[65%] right-[18%] rotate-[10deg]"
-               onError={handleImgError} />
+               onError={handleImgError} />*/}
           
           {/* Octava fila */}
           <img src={assetUrl('/images/logo.png')} alt="" 
-               className="absolute w-72 h-auto top-[75%] left-[12%] -rotate-[22deg]"
+               className="absolute w-70 h-auto top-[75%] left-[12%] -rotate-[22deg]"
                onError={handleImgError} />
           
           {/* Novena fila */}
-          <img src={assetUrl('/images/logo.png')} alt="" 
+          {/*<img src={assetUrl('/images/logo.png')} alt="" 
                className="absolute w-78 h-auto top-[85%] right-[14%] rotate-[16deg]"
-               onError={handleImgError} />
+               onError={handleImgError} />*/}
         </div>
 
         {/* Content */}

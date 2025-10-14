@@ -4,7 +4,8 @@ import WhiteButtonMenu from '../utils/WhiteButtonMenu';
 import { useCart } from '../context/CartContext';
 
 
-const API_URL = "http://143.110.239.79:5010"; // tu base URL del backend
+//const API_URL = "http://143.110.239.79:5010"; // tu base URL del backend
+const API_URL = "https://lajuanita.mindnt.com.mx";
 //const API_URL = "http://localhost:5010"; // tu base URL del backend
 
 
@@ -14,10 +15,15 @@ const MenuSection = () => {
   const [products, setProducts] = useState([]); // 🔹 productos del día
   const { addItem } = useCart();
 
-  // 🔹 1. Obtener fecha actual en formato YYYY-MM-DD
+  // 🔹 1. Obtener fecha actual en formato YYYY-MM-DD (horario de México)
   const getTodayDate = () => {
     const today = new Date();
-    return today.toISOString().split('T')[0];
+    // Convertir a horario de México (UTC-6 o UTC-5 dependiendo del horario de verano)
+    const mexicoDate = new Date(today.toLocaleString("en-US", {timeZone: "America/Mexico_City"}));
+    const year = mexicoDate.getFullYear();
+    const month = String(mexicoDate.getMonth() + 1).padStart(2, '0');
+    const day = String(mexicoDate.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   // 🔹 2. Cargar categorías desde el backend

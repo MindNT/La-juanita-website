@@ -4,6 +4,11 @@ import WhiteButtonIcon from '../utils/WhiteButtonIcon';
 import WhiteButtonTrans from '../utils/WhiteButtonTrans';
 import GreenButton from '../utils/GreenButton';
 
+
+//const API_URL = "http://143.110.239.79:5010"; // tu base URL del backend
+const API_URL = "https://lajuanita.mindnt.com.mx";
+//const API_URL = "http://localhost:5010"; // tu base URL del backend
+
 const ModalBilling = ({ isOpen, onClose }) => {
   const { items, updateQuantity, removeItem, getTotalPrice, clearCart } = useCart();
   
@@ -21,6 +26,28 @@ const ModalBilling = ({ isOpen, onClose }) => {
   const [isVerified, setIsVerified] = useState(false);
   const [isNewCustomer, setIsNewCustomer] = useState(false);
   const [orderCount, setOrderCount] = useState(0);
+  const [deliveryType, setDeliveryType] = useState(''); // 'pickup', 'delivery', 'someone_else'
+  const [location, setLocation] = useState('');
+  const [customAddress, setCustomAddress] = useState('');
+  const [isLoadingLocation, setIsLoadingLocation] = useState(false);
+
+  // Reset form to initial state
+  const resetForm = () => {
+    setCustomerInfo({
+      name: '',
+      phone: '',
+      date: '',
+      hour: '',
+      minute: ''
+    });
+    setIsVerified(false);
+    setIsNewCustomer(false);
+    setOrderCount(0);
+    setDeliveryType('');
+    setLocation('');
+    setCustomAddress('');
+    setIsLoadingLocation(false);
+  };
 
   const handleQuantityChange = (itemId, newQuantity) => {
     if (newQuantity < 1) {
@@ -102,6 +129,18 @@ const ModalBilling = ({ isOpen, onClose }) => {
     message += `📱 *Teléfono:* ${customerInfo.phone}\n`;
     message += `📅 *Fecha:* ${customerInfo.date}\n`;
     message += `⏰ *Hora:* ${customerInfo.hour}:${customerInfo.minute}\n\n`;
+    
+    // Add delivery information
+    if (deliveryType === 'pickup') {
+      message += `🏪 *Tipo:* Recoger en tienda\n\n`;
+    } else if (deliveryType === 'delivery') {
+      message += `🚗 *Tipo:* Entrega a domicilio\n`;
+      message += `📍 *Ubicación:* ${location}\n\n`;
+    } else if (deliveryType === 'someone_else') {
+      message += `👥 *Tipo:* Para alguien más\n`;
+      message += `📍 *Dirección:* ${customAddress}\n\n`;
+    }
+    
     message += `🛒 *PEDIDO:*\n`;
     
     items.forEach(item => {
@@ -114,9 +153,132 @@ const ModalBilling = ({ isOpen, onClose }) => {
     return encodeURIComponent(message);
   };
 
-  const handleSendOrder = () => {
-    if (!customerInfo.name || !customerInfo.phone) {
-      alert('Por favor completa nombre y teléfono');
+  // Real API call function to verify phone number
+  const verifyPhoneNumber = async (phone) => {
+    try {
+      const response = await fetch(`${API_URL}/customers/verify-phone?phone=${phone}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      
+      const data = await response.json();
+      return data.exists;
+    } catch (error) {
+      console.error('Error verifying phone number:', error);
+      alert('Error al verificar el número de teléfono. Inténtalo de nuevo.');
+      return null;
+    }
+  };
+
+  // Real API call function to add new customer
+  const addCustomer = async (name, phone) => {
+    try {
+      const response = await fetch(`${API_URL}/customers/add-customer?name=${encodeURIComponent(name)}&phone=${phone}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error adding customer:', error);
+      alert('Error al registrar el cliente. El pedido se enviará de todas formas.');
+      return null;
+    }
+  };
+
+  // Real API call function to save order
+  const saveOrder = async (orderData) => {
+    try {
+      // Create query parameters
+      const params = new URLSearchParams();
+      params.append('phone', orderData.phone);
+      params.append('total_amount', orderData.total_amount);
+      params.append('items', JSON.stringify(orderData.items));
+      params.append('maps_url', orderData.maps_url || '');
+      params.append('promotions', JSON.stringify(orderData.promotions));
+      
+      const response = await fetch(`${API_URL}/orders/save-order?${params.toString()}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error saving order:', error);
+      alert('Error al guardar el pedido. El pedido se enviará por WhatsApp de todas formas.');
+      return null;
+    }
+  };
+
+  // Real API call function to get order count by phone
+  const getOrderCountByPhone = async (phone) => {
+    try {
+      const response = await fetch(`${API_URL}/orders/count-by-phone?phone=${phone}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      
+      const data = await response.json();
+      return data.status === 'success' ? data.order_count : 0;
+    } catch (error) {
+      console.error('Error getting order count:', error);
+      return 0; // Return 0 if there's an error
+    }
+  };
+
+  const handleVerifyPhone = async () => {
+    if (!customerInfo.phone) {
+      alert('Por favor ingresa un número de teléfono');
+      return;
+    }
+
+    const response = await verifyPhoneNumber(customerInfo.phone);
+    if (response !== null) {
+      setIsVerified(true);
+      setIsNewCustomer(response === 0);
+      if (response === 1) {
+        // For existing customers, get real order count from API
+        const realOrderCount = await getOrderCountByPhone(customerInfo.phone);
+        setOrderCount(realOrderCount);
+      }
+    }
+  };
+
+  const handleSendOrder = async () => {
+    // Validate required fields based on customer type
+    if (isNewCustomer && !customerInfo.name) {
+      alert('Por favor completa tu nombre');
+      return;
+    }
+    
+    if (!customerInfo.phone) {
+      alert('Por favor completa el número de teléfono');
       return;
     }
     
@@ -129,6 +291,58 @@ const ModalBilling = ({ isOpen, onClose }) => {
       alert(`Por favor selecciona una hora válida entre ${BUSINESS_START_HOUR}:00 y ${BUSINESS_END_HOUR}:00`);
       return;
     }
+
+    if (!deliveryType) {
+      alert('Por favor selecciona un tipo de entrega');
+      return;
+    }
+    
+    if (deliveryType === 'delivery' && !location) {
+      alert('Por favor obtén tu ubicación o ingresa una dirección');
+      return;
+    }
+    
+    if (deliveryType === 'someone_else' && !customAddress.trim()) {
+      alert('Por favor ingresa la dirección para la entrega');
+      return;
+    }
+
+    // If it's a new customer, add them to the database first
+    if (isNewCustomer) {
+      await addCustomer(customerInfo.name, customerInfo.phone);
+    }
+
+    // Prepare order data for saving
+    const orderData = {
+      phone: customerInfo.phone,
+      items: {},
+      total_amount: parseFloat(getTotalPrice()),
+      maps_url: '',
+      promotions: {} // Add promotions logic if needed
+    };
+
+    // Convert cart items to the required format
+    items.forEach(item => {
+      orderData.items[item.id] = item.quantity;
+    });
+
+    // Set maps_url based on delivery type
+    if (deliveryType === 'delivery' && location) {
+      orderData.maps_url = location;
+    } else if (deliveryType === 'someone_else' && customAddress.trim()) {
+      orderData.maps_url = customAddress.trim();
+    }
+
+    // Save the order to the database
+    const saveResult = await saveOrder(orderData);
+    
+    // If order saving failed, ask user if they want to continue
+    if (!saveResult) {
+      const continueAnyway = window.confirm('¿Deseas continuar enviando el pedido por WhatsApp?');
+      if (!continueAnyway) {
+        return;
+      }
+    }
     
     const whatsappNumber = '525659105865'; // Replace with actual number
     const message = formatOrderForWhatsApp();
@@ -136,39 +350,92 @@ const ModalBilling = ({ isOpen, onClose }) => {
     
     window.open(whatsappUrl, '_blank');
     clearCart();
+    resetForm(); // Reset form after successful order
     onClose();
   };
 
-  // Fake API call function
-  const verifyPhoneNumber = async (phone) => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        // Simulate random response (0 or 1)
-        const response = Math.round(Math.random());
-        if (response === 1) {
-          // Simulate random order count for returning customers
-          setOrderCount(Math.floor(Math.random() * 20) + 1);
-        }
-        resolve(response);
-      }, 1000);
-    });
-  };
-
-  const handleVerifyPhone = async () => {
-    if (!customerInfo.phone) {
-      alert('Por favor ingresa un número de teléfono');
+  const getLocation = () => {
+    setIsLoadingLocation(true);
+    
+    if (!navigator.geolocation) {
+      alert('La geolocalización no está soportada en este navegador');
+      setIsLoadingLocation(false);
       return;
     }
 
-    const response = await verifyPhoneNumber(customerInfo.phone);
-    setIsVerified(true);
-    setIsNewCustomer(response === 0);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          
+          // Call your endpoint to get Google Maps URL
+          const response = await fetch(
+            `${API_URL}/utils/generate-maps-url?lat=${latitude}&lng=${longitude}`,
+            {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.status === 'success' && data.data.google_maps_url) {
+              setLocation(data.data.google_maps_url);
+            } else {
+              setLocation(`https://www.google.com/maps?q=${latitude},${longitude}`);
+            }
+          } else {
+            // Fallback to manual URL creation
+            setLocation(`https://www.google.com/maps?q=${latitude},${longitude}`);
+          }
+        } catch (error) {
+          console.error('Error getting Google Maps URL:', error);
+          // Fallback to manual URL creation
+          const { latitude, longitude } = position.coords;
+          setLocation(`https://www.google.com/maps?q=${latitude},${longitude}`);
+        } finally {
+          setIsLoadingLocation(false);
+        }
+      },
+      (error) => {
+        console.error('Error getting location:', error);
+        let errorMessage = 'No se pudo obtener la ubicación';
+        
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            errorMessage = 'Permiso de ubicación denegado';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMessage = 'Ubicación no disponible';
+            break;
+          case error.TIMEOUT:
+            errorMessage = 'Tiempo de espera agotado';
+            break;
+        }
+        
+        alert(errorMessage);
+        setIsLoadingLocation(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 300000
+      }
+    );
   };
 
   const isOrderValid = () => {
     if (!isVerified) return false;
     if (isNewCustomer && !customerInfo.name) return false;
-    return customerInfo.phone && validateSelectedTime();
+    if (!customerInfo.phone || !validateSelectedTime()) return false;
+    if (!deliveryType) return false;
+    
+    if (deliveryType === 'delivery' && !location) return false;
+    if (deliveryType === 'someone_else' && !customAddress.trim()) return false;
+    
+    return true;
   };
 
   if (!isOpen) return null;
@@ -260,74 +527,179 @@ const ModalBilling = ({ isOpen, onClose }) => {
                 </div>
 
                 {isVerified && (
-                  <div className="text-white text-sm text-center p-2">
-                    {isNewCustomer ? (
-                      <>
-                        <p className="mb-2">¡Bienvenido a La Juanita! Por favor ingresa tu nombre:</p>
-                        <input
-                          type="text"
-                          placeholder="Nombre completo"
-                          value={customerInfo.name}
-                          onChange={(e) => handleInputChange('name', e.target.value)}
-                          className="w-full p-3 sm:p-3 text-sm sm:text-base rounded-lg bg-white bg-opacity-20 text-white placeholder-gray-300 border border-white border-opacity-30 focus:border-opacity-60 focus:outline-none transition-all"
-                        />
-                      </>
-                    ) : (
-                      <p className="text-green-300">
-                        Este es tu pedido número {orderCount}, ¡gracias por tu preferencia!
-                      </p>
+                  <>
+                    <div className="text-white text-sm text-center p-2">
+                      {isNewCustomer ? (
+                        <>
+                          <p className="mb-2">¡Bienvenido a La Juanita! Por favor ingresa tu nombre:</p>
+                          <input
+                            type="text"
+                            placeholder="Nombre completo"
+                            value={customerInfo.name}
+                            onChange={(e) => handleInputChange('name', e.target.value)}
+                            className="w-full p-3 sm:p-3 text-sm sm:text-base rounded-lg bg-white bg-opacity-20 text-white placeholder-gray-300 border border-white border-opacity-30 focus:border-opacity-60 focus:outline-none transition-all"
+                          />
+                        </>
+                      ) : (
+                        <p className="text-green-300">
+                          Este es tu pedido número {orderCount}, ¡gracias por tu preferencia!
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Delivery Type Selection */}
+                    <div className="space-y-3">
+                      <h4 className="text-white font-semibold text-sm">¿Cómo recibirás tu pedido?</h4>
+                      <div className="grid grid-cols-1 gap-2">
+                        <button
+                          onClick={() => setDeliveryType('pickup')}
+                          className={`p-3 rounded-lg border-2 transition-all ${
+                            deliveryType === 'pickup'
+                              ? 'bg-white bg-opacity-25 border-white text-white'
+                              : 'bg-white bg-opacity-10 border-white border-opacity-30 text-white hover:bg-opacity-20'
+                          }`}
+                        >
+                          <div className="flex items-center justify-center space-x-2">
+                            <span className="text-lg">🏪</span>
+                            <span className="font-medium">Recoger en tienda</span>
+                          </div>
+                        </button>
+                        
+                        <button
+                          onClick={() => setDeliveryType('delivery')}
+                          className={`p-3 rounded-lg border-2 transition-all ${
+                            deliveryType === 'delivery'
+                              ? 'bg-white bg-opacity-25 border-white text-white'
+                              : 'bg-white bg-opacity-10 border-white border-opacity-30 text-white hover:bg-opacity-20'
+                          }`}
+                        >
+                          <div className="flex items-center justify-center space-x-2">
+                            <span className="text-lg">🚗</span>
+                            <span className="font-medium">Entrega a domicilio</span>
+                          </div>
+                        </button>
+                        
+                        <button
+                          onClick={() => setDeliveryType('someone_else')}
+                          className={`p-3 rounded-lg border-2 transition-all ${
+                            deliveryType === 'someone_else'
+                              ? 'bg-white bg-opacity-25 border-white text-white'
+                              : 'bg-white bg-opacity-10 border-white border-opacity-30 text-white hover:bg-opacity-20'
+                          }`}
+                        >
+                          <div className="flex items-center justify-center space-x-2">
+                            <span className="text-lg">👥</span>
+                            <span className="font-medium">Para alguien más</span>
+                          </div>
+                        </button>
+                      </div>
+
+                      {/* Location/Address Input */}
+                      {deliveryType === 'delivery' && (
+                        <div className="space-y-2">
+                          <button
+                            onClick={getLocation}
+                            disabled={isLoadingLocation}
+                            className="w-full p-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
+                          >
+                            {isLoadingLocation ? (
+                              <>
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                <span>Obteniendo ubicación...</span>
+                              </>
+                            ) : (
+                              <>
+                                <span>📍</span>
+                                <span>Usar mi ubicación actual</span>
+                              </>
+                            )}
+                          </button>
+                          {location && (
+                            <div className="p-3 bg-white bg-opacity-20 rounded-lg">
+                              <p className="text-white text-sm">
+                                <strong>Ubicación obtenida:</strong>
+                              </p>
+                              <a 
+                                href={location} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-blue-300 hover:text-blue-200 underline text-sm break-all"
+                              >
+                                Ver en Google Maps
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {deliveryType === 'someone_else' && (
+                        <div className="space-y-2">
+                          <label className="text-white text-sm font-medium block">Dirección completa:</label>
+                          <textarea
+                            placeholder="Ingresa la dirección completa (calle, número, colonia, referencias)"
+                            value={customAddress}
+                            onChange={(e) => setCustomAddress(e.target.value)}
+                            rows={3}
+                            className="w-full p-3 text-sm rounded-lg bg-white bg-opacity-20 text-white placeholder-gray-300 border border-white border-opacity-30 focus:border-opacity-60 focus:outline-none transition-all resize-none"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Time Selection - Only show after delivery type is selected */}
+                    {deliveryType && (
+                      <div className="space-y-2">
+                        <label className="text-white text-sm font-medium block">
+                          {deliveryType === 'pickup' ? 'Recogeré a las:' : 'Entregar a las:'}
+                        </label>
+                        <div className="text-xs text-white opacity-75 mb-2">
+                          Horario disponible: {BUSINESS_START_HOUR}:00 - {BUSINESS_END_HOUR}:00
+                        </div>
+                        
+                        <div className="space-y-3">
+                          <div>
+                            <label className="text-white text-xs mb-1 block opacity-80">Hora (24h)</label>
+                            <div className="flex items-center justify-center space-x-2">
+                              <input
+                                type="text"
+                                placeholder="12"
+                                value={customerInfo.hour}
+                                onChange={(e) => handleHourChange(e.target.value)}
+                                className="w-16 p-3 text-sm sm:text-base text-center rounded-lg bg-white bg-opacity-20 text-white placeholder-gray-300 border border-white border-opacity-30 focus:border-opacity-60 focus:outline-none transition-all"
+                                maxLength={2}
+                              />
+                              <span className="text-white text-lg font-bold">:</span>
+                              <input
+                                type="text"
+                                placeholder="00"
+                                value={customerInfo.minute}
+                                onChange={(e) => handleMinuteChange(e.target.value)}
+                                className="w-16 p-3 text-sm sm:text-base text-center rounded-lg bg-white bg-opacity-20 text-white placeholder-gray-300 border border-white border-opacity-30 focus:border-opacity-60 focus:outline-none transition-all"
+                                maxLength={2}
+                              />
+                            </div>
+                            <div className="text-xs text-white opacity-60 mt-1 text-center">
+                              Ejemplo: 12:00, 13:30, 14:45
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Display selected time if valid */}
+                        {customerInfo.hour && customerInfo.minute && validateSelectedTime() && (
+                          <div className="text-center mt-2">
+                            <div className="inline-block bg-white bg-opacity-20 rounded-lg px-3 py-1 text-white text-sm font-medium">
+                              Hora seleccionada: {(() => {
+                                const hours = parseInt(customerInfo.hour, 10);
+                                const minutes = parseInt(customerInfo.minute, 10);
+                                return formatDisplayTime(hours, minutes);
+                              })()}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     )}
-                  </div>
+                  </>
                 )}
-
-                <div className="space-y-2">
-                  <label className="text-white text-sm font-medium block">Recogeré a las:</label>
-                  <div className="text-xs text-white opacity-75 mb-2">
-                    Horario disponible: {BUSINESS_START_HOUR}:00 - {BUSINESS_END_HOUR}:00
-                  </div>
-                  
-                  <div className="space-y-3">
-                    {/* Time Inputs */}
-                    <div>
-                      <label className="text-white text-xs mb-1 block opacity-80">Hora (24h)</label>
-                      <div className="flex items-center justify-center space-x-2">
-                        <input
-                          type="text"
-                          placeholder="12"
-                          value={customerInfo.hour}
-                          onChange={(e) => handleHourChange(e.target.value)}
-                          className="w-16 p-3 text-sm sm:text-base text-center rounded-lg bg-white bg-opacity-20 text-white placeholder-gray-300 border border-white border-opacity-30 focus:border-opacity-60 focus:outline-none transition-all"
-                          maxLength={2}
-                        />
-                        <span className="text-white text-lg font-bold">:</span>
-                        <input
-                          type="text"
-                          placeholder="00"
-                          value={customerInfo.minute}
-                          onChange={(e) => handleMinuteChange(e.target.value)}
-                          className="w-16 p-3 text-sm sm:text-base text-center rounded-lg bg-white bg-opacity-20 text-white placeholder-gray-300 border border-white border-opacity-30 focus:border-opacity-60 focus:outline-none transition-all"
-                          maxLength={2}
-                        />
-                      </div>
-                      <div className="text-xs text-white opacity-60 mt-1 text-center">
-                        Ejemplo: 12:00, 13:30, 14:45
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Display selected time if valid */}
-                  {customerInfo.hour && customerInfo.minute && validateSelectedTime() && (
-                    <div className="text-center mt-2">
-                      <div className="inline-block bg-white bg-opacity-20 rounded-lg px-3 py-1 text-white text-sm font-medium">
-                        Hora seleccionada: {(() => {
-                          const hours = parseInt(customerInfo.hour, 10);
-                          const minutes = parseInt(customerInfo.minute, 10);
-                          return formatDisplayTime(hours, minutes);
-                        })()}
-                      </div>
-                    </div>
-                  )}
-                </div>
               </div>
 
               {/* Total */}
