@@ -91,9 +91,9 @@ const ModalPermissions = ({ isOpen, onClose }) => {
           {step === 1 && (
             <div className="text-center">
               {/* Logo */}
-              <div className="w-20 h-20 mx-auto mb-6 bg-white/10 rounded-full flex items-center justify-center">
+              <div className="w-20 h-20 mx-auto mb-6 flex items-center justify-center">
                 <img 
-                  src={assetUrl('/images/logo.png')} 
+                  src={assetUrl('/images/logonavbar.png')} 
                   alt="La Juanita" 
                   className="w-12 h-12 object-contain"
                   onError={handleImgError}
@@ -111,7 +111,7 @@ const ModalPermissions = ({ isOpen, onClose }) => {
               <div className="space-y-4 mb-8">
                 <div className="flex items-start space-x-3 text-left">
                   <div className="w-6 h-6 bg-green-500/20 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <img src={assetUrl('/assets/external-link.svg')} alt="Pop-up" className="w-3 h-3" onError={handleImgError} />
+                    <img src={assetUrl('/assets/phone.svg')} alt="Pop-up" className="w-3 h-3" onError={handleImgError} />
                   </div>
                   <div>
                     <p className="text-white font-medium text-sm">Abrir WhatsApp</p>
@@ -148,7 +148,7 @@ const ModalPermissions = ({ isOpen, onClose }) => {
           {step === 2 && (
             <div className="text-center">
               <div className="w-16 h-16 mx-auto mb-6 bg-green-500/20 rounded-full flex items-center justify-center">
-                <img src={assetUrl('/assets/external-link.svg')} alt="Pop-up" className="w-8 h-8" onError={handleImgError} />
+                <img src={assetUrl('/assets/phone.svg')} alt="Pop-up" className="w-8 h-8" onError={handleImgError} />
               </div>
               
               <h3 className="text-xl font-bold text-white mb-4">
@@ -226,7 +226,7 @@ const ModalPermissions = ({ isOpen, onClose }) => {
                   permissions.popup === 'granted' ? 'bg-green-500/20' : 'bg-red-500/20'
                 }`}>
                   <div className="flex items-center space-x-2">
-                    <img src={assetUrl('/assets/external-link.svg')} alt="Pop-up" className="w-4 h-4" onError={handleImgError} />
+                    <img src={assetUrl('/assets/phone.svg')} alt="Pop-up" className="w-4 h-4" onError={handleImgError} />
                     <span className="text-white text-sm">Pop-ups</span>
                   </div>
                   <span className={`text-xs font-medium ${

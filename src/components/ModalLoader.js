@@ -84,17 +84,6 @@ const ModalLoader = ({ isOpen, progress }) => {
               <div className="text-white animate-bounce">✓</div>
             )}
           </div>
-          <div className={`flex items-center justify-center space-x-3 text-base transition-all duration-500 ${
-            progress >= 100 ? 'text-white scale-110' : 'text-white/40'
-          }`}>
-            <div className={`w-2 h-2 rounded-full transition-all duration-500 ${
-              progress >= 100 ? 'bg-white shadow-lg shadow-white/50' : 'bg-white/30'
-            }`}></div>
-            <span className="font-semibold">¡Listo!</span>
-            {progress >= 100 && (
-              <div className="text-white animate-bounce text-xl">🎉</div>
-            )}
-          </div>
         </div>
       </div>
     </div>

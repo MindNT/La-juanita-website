@@ -10,7 +10,7 @@ const GreenButton = ({ onClick, className, ...props }) => {
       {...props}
     >
       <img 
-        src={assetUrl('/assets/check-icon.svg')}
+        src={assetUrl('/assets/check-circle.svg')}
         alt="Check"
         className="w-6 h-6"
         onError={handleImgError}
