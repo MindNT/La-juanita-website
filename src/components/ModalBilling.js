@@ -3,13 +3,14 @@ import { useCart } from '../context/CartContext';
 import WhiteButtonIcon from '../utils/WhiteButtonIcon';
 import WhiteButtonTrans from '../utils/WhiteButtonTrans';
 import GreenButton from '../utils/GreenButton';
-
+import { assetUrl, handleImgError } from '../utils/imageHelpers';
+import ModalSuccess from './ModalSuccess';
 
 //const API_URL = "http://143.110.239.79:5010"; // tu base URL del backend
 const API_URL = "https://lajuanita.mindnt.com.mx";
 //const API_URL = "http://localhost:5010"; // tu base URL del backend
 
-const ModalBilling = ({ isOpen, onClose }) => {
+const ModalBilling = ({ isOpen, onClose, onStartProcessing }) => {
   const { items, updateQuantity, removeItem, getTotalPrice, clearCart } = useCart();
   
   // CONFIGURABLE BUSINESS HOURS - Easy to modify
@@ -28,8 +29,13 @@ const ModalBilling = ({ isOpen, onClose }) => {
   const [orderCount, setOrderCount] = useState(0);
   const [deliveryType, setDeliveryType] = useState(''); // 'pickup', 'delivery', 'someone_else'
   const [location, setLocation] = useState('');
-  const [customAddress, setCustomAddress] = useState('');
+  const [customAddress, setCustomAddress] = useState({
+    street: '',
+    number: '',
+    neighborhood: ''
+  });
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   // Reset form to initial state
   const resetForm = () => {
@@ -45,7 +51,11 @@ const ModalBilling = ({ isOpen, onClose }) => {
     setOrderCount(0);
     setDeliveryType('');
     setLocation('');
-    setCustomAddress('');
+    setCustomAddress({
+      street: '',
+      number: '',
+      neighborhood: ''
+    });
     setIsLoadingLocation(false);
   };
 
@@ -79,6 +89,15 @@ const ModalBilling = ({ isOpen, onClose }) => {
     setCustomerInfo(prev => ({
       ...prev,
       minute: numericValue
+    }));
+  };
+
+  const handlePhoneChange = (value) => {
+    // Only allow numbers and limit to 10 digits
+    const numericValue = value.replace(/\D/g, '').slice(0, 10);
+    setCustomerInfo(prev => ({
+      ...prev,
+      phone: numericValue
     }));
   };
 
@@ -123,36 +142,6 @@ const ModalBilling = ({ isOpen, onClose }) => {
     }
   }, [isOpen]);
 
-  const formatOrderForWhatsApp = () => {
-    let message = `🍽️ *NUEVA ORDEN - LA JUANITA*\n\n`;
-    message += `👤 *Cliente:* ${customerInfo.name}\n`;
-    message += `📱 *Teléfono:* ${customerInfo.phone}\n`;
-    message += `📅 *Fecha:* ${customerInfo.date}\n`;
-    message += `⏰ *Hora:* ${customerInfo.hour}:${customerInfo.minute}\n\n`;
-    
-    // Add delivery information
-    if (deliveryType === 'pickup') {
-      message += `🏪 *Tipo:* Recoger en tienda\n\n`;
-    } else if (deliveryType === 'delivery') {
-      message += `🚗 *Tipo:* Entrega a domicilio\n`;
-      message += `📍 *Ubicación:* ${location}\n\n`;
-    } else if (deliveryType === 'someone_else') {
-      message += `👥 *Tipo:* Para alguien más\n`;
-      message += `📍 *Dirección:* ${customAddress}\n\n`;
-    }
-    
-    message += `🛒 *PEDIDO:*\n`;
-    
-    items.forEach(item => {
-      message += `• ${item.quantity}x ${item.title} - $${item.price * item.quantity}\n`;
-    });
-    
-    message += `\n💰 *Total: $${getTotalPrice()}*\n\n`;
-    message += `¡Gracias por elegir La Juanita! 🙏`;
-    
-    return encodeURIComponent(message);
-  };
-
   // Real API call function to verify phone number
   const verifyPhoneNumber = async (phone) => {
     try {
@@ -172,60 +161,6 @@ const ModalBilling = ({ isOpen, onClose }) => {
     } catch (error) {
       console.error('Error verifying phone number:', error);
       alert('Error al verificar el número de teléfono. Inténtalo de nuevo.');
-      return null;
-    }
-  };
-
-  // Real API call function to add new customer
-  const addCustomer = async (name, phone) => {
-    try {
-      const response = await fetch(`${API_URL}/customers/add-customer?name=${encodeURIComponent(name)}&phone=${phone}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error('Network response was not ok');
-      }
-      
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      console.error('Error adding customer:', error);
-      alert('Error al registrar el cliente. El pedido se enviará de todas formas.');
-      return null;
-    }
-  };
-
-  // Real API call function to save order
-  const saveOrder = async (orderData) => {
-    try {
-      // Create query parameters
-      const params = new URLSearchParams();
-      params.append('phone', orderData.phone);
-      params.append('total_amount', orderData.total_amount);
-      params.append('items', JSON.stringify(orderData.items));
-      params.append('maps_url', orderData.maps_url || '');
-      params.append('promotions', JSON.stringify(orderData.promotions));
-      
-      const response = await fetch(`${API_URL}/orders/save-order?${params.toString()}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error('Network response was not ok');
-      }
-      
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      console.error('Error saving order:', error);
-      alert('Error al guardar el pedido. El pedido se enviará por WhatsApp de todas formas.');
       return null;
     }
   };
@@ -302,56 +237,46 @@ const ModalBilling = ({ isOpen, onClose }) => {
       return;
     }
     
-    if (deliveryType === 'someone_else' && !customAddress.trim()) {
-      alert('Por favor ingresa la dirección para la entrega');
+    if (deliveryType === 'someone_else' && (!customAddress.street.trim() || !customAddress.number.trim() || !customAddress.neighborhood.trim())) {
+      alert('Por favor completa todos los campos de la dirección');
       return;
     }
 
-    // If it's a new customer, add them to the database first
-    if (isNewCustomer) {
-      await addCustomer(customerInfo.name, customerInfo.phone);
-    }
-
-    // Prepare order data for saving
-    const orderData = {
-      phone: customerInfo.phone,
-      items: {},
-      total_amount: parseFloat(getTotalPrice()),
-      maps_url: '',
-      promotions: {} // Add promotions logic if needed
-    };
-
-    // Convert cart items to the required format
-    items.forEach(item => {
-      orderData.items[item.id] = item.quantity;
-    });
-
-    // Set maps_url based on delivery type
-    if (deliveryType === 'delivery' && location) {
-      orderData.maps_url = location;
-    } else if (deliveryType === 'someone_else' && customAddress.trim()) {
-      orderData.maps_url = customAddress.trim();
-    }
-
-    // Save the order to the database
-    const saveResult = await saveOrder(orderData);
+    // Check popup permission before proceeding
+    const popupPermission = sessionStorage.getItem('popup_permission');
     
-    // If order saving failed, ask user if they want to continue
-    if (!saveResult) {
-      const continueAnyway = window.confirm('¿Deseas continuar enviando el pedido por WhatsApp?');
-      if (!continueAnyway) {
+    if (popupPermission === 'denied') {
+      const proceed = window.confirm(
+        'Los pop-ups están bloqueados. El pedido se procesará, pero es posible que tengas que abrir WhatsApp manualmente. ¿Deseas continuar?'
+      );
+      
+      if (!proceed) {
         return;
       }
     }
-    
-    const whatsappNumber = '525659105865'; // Replace with actual number
-    const message = formatOrderForWhatsApp();
-    const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${message}`;
-    
-    window.open(whatsappUrl, '_blank');
+
+    // Start processing - delegate to parent component
+    const orderData = {
+      customerInfo,
+      deliveryType,
+      location,
+      customAddress,
+      items,
+      totalPrice: getTotalPrice(),
+      isNewCustomer
+    };
+
+    onStartProcessing(orderData, () => {
+      setShowSuccessModal(true);
+    });
+  };
+
+  const handleSuccessClose = () => {
+    // Clear everything and reset to initial state
     clearCart();
-    resetForm(); // Reset form after successful order
-    onClose();
+    resetForm();
+    setShowSuccessModal(false);
+    onClose(); // Close the billing modal
   };
 
   const getLocation = () => {
@@ -401,11 +326,12 @@ const ModalBilling = ({ isOpen, onClose }) => {
       },
       (error) => {
         console.error('Error getting location:', error);
+        
         let errorMessage = 'No se pudo obtener la ubicación';
         
         switch (error.code) {
           case error.PERMISSION_DENIED:
-            errorMessage = 'Permiso de ubicación denegado';
+            errorMessage = 'Permiso de ubicación denegado. Puedes activarlo en la configuración de tu navegador y recargar la página.';
             break;
           case error.POSITION_UNAVAILABLE:
             errorMessage = 'Ubicación no disponible';
@@ -433,7 +359,7 @@ const ModalBilling = ({ isOpen, onClose }) => {
     if (!deliveryType) return false;
     
     if (deliveryType === 'delivery' && !location) return false;
-    if (deliveryType === 'someone_else' && !customAddress.trim()) return false;
+    if (deliveryType === 'someone_else' && (!customAddress.street.trim() || !customAddress.number.trim() || !customAddress.neighborhood.trim())) return false;
     
     return true;
   };
@@ -441,293 +367,446 @@ const ModalBilling = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-3 py-6 sm:p-4 sm:py-8 md:py-12">
-      <div className="relative bg-gradient-to-b from-red-900 via-red-800 to-red-950 rounded-xl sm:rounded-2xl shadow-2xl max-w-xs sm:max-w-sm md:max-w-lg w-full mx-2 my-2 sm:mx-4 sm:my-4 md:my-8 overflow-hidden border-2 sm:border-4 border-white max-h-[85vh] sm:max-h-[80vh] lg:max-h-[85vh] overflow-y-auto">
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="absolute top-2 right-2 sm:top-3 sm:right-3 md:top-4 md:right-4 text-white hover:text-gray-300 transition-colors z-10 p-1 rounded-full touch-manipulation"
-        >
-          <svg className="w-6 h-6 sm:w-5 sm:h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+    <>
+      <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+        <div className="relative bg-gradient-to-br from-red-900/95 via-red-800/95 to-red-950/95 backdrop-blur-sm rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-white/20 max-h-[90vh] overflow-y-auto">
+          
+          {/* Close button */}
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 text-white/80 hover:text-white transition-all duration-200 z-10 p-2 hover:bg-white/10 rounded-full"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
 
-        {/* Content */}
-        <div className="relative p-4 sm:p-6 md:p-8">
-          {/* Header */}
-          <div className="text-center mb-4 sm:mb-6">
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-1 sm:mb-2">
-              Tu Orden
-            </h1>
-            <p className="text-white text-xs sm:text-sm opacity-80">
-              Revisa y confirma tu pedido
-            </p>
-          </div>
-
-          {/* Cart Items */}
-          {items.length === 0 ? (
-            <div className="text-center text-white py-6 sm:py-8">
-              <p className="text-sm sm:text-base">Tu carrito está vacío</p>
+          {/* Content */}
+          <div className="relative p-6">
+            {/* Header */}
+            <div className="text-center mb-8">
+              <h1 className="text-2xl font-bold text-white mb-2">
+                Tu Orden
+              </h1>
+              <p className="text-white/70 text-sm">
+                Revisa y confirma tu pedido
+              </p>
             </div>
-          ) : (
-            <>
-              <div className="space-y-3 sm:space-y-4 mb-4 sm:mb-6 max-h-48 sm:max-h-60 overflow-y-auto">
-                {items.map(item => (
-                  <div key={item.id} className="bg-white bg-opacity-15 rounded-lg p-3 sm:p-4">
-                    <div className="flex justify-between items-start mb-2">
-                      <h3 className="text-white font-semibold text-xs sm:text-sm leading-tight pr-2">{item.title}</h3>
-                      <button
-                        onClick={() => removeItem(item.id)}
-                        className="text-red-300 hover:text-red-100 p-1 -m-1 flex-shrink-0"
-                      >
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                        </svg>
-                      </button>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center space-x-2 sm:space-x-3">
+
+            {/* Cart Items */}
+            {items.length === 0 ? (
+              <div className="text-center text-white/80 py-12">
+                <div className="w-16 h-16 mx-auto mb-4 opacity-50">
+                  <svg fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M7 4V2C7 1.45 7.45 1 8 1H16C16.55 1 17 1.45 17 2V4H20C20.55 4 21 4.45 21 5S20.55 6 20 6H19V19C19 20.1 18.1 21 17 21H7C5.9 21 5 20.1 5 19V6H4C3.45 6 3 5.55 3 5S3.45 4 4 4H7ZM9 3V4H15V3H9ZM7 6V19H17V6H7Z"/>
+                  </svg>
+                </div>
+                <p className="text-sm">Tu carrito está vacío</p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-3 mb-8 max-h-64 overflow-y-auto pr-2">
+                  {items.map(item => (
+                    <div key={item.id} className="group bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/10 hover:bg-white/15 transition-all duration-200">
+                      <div className="flex justify-between items-start mb-3">
+                        <h3 className="text-white font-medium text-sm leading-relaxed pr-3 flex-1">{item.title}</h3>
                         <button
-                          onClick={() => handleQuantityChange(item.id, item.quantity - 1)}
-                          className="bg-white bg-opacity-20 text-white w-7 h-7 sm:w-6 sm:h-6 rounded flex items-center justify-center text-sm font-semibold"
+                          onClick={() => removeItem(item.id)}
+                          className="text-red-300/80 hover:text-red-200 p-1.5 -m-1.5 flex-shrink-0 hover:bg-red-500/20 rounded-lg transition-all duration-200"
                         >
-                          -
-                        </button>
-                        <span className="text-white text-sm sm:text-base w-6 sm:w-8 text-center font-medium">{item.quantity}</span>
-                        <button
-                          onClick={() => handleQuantityChange(item.id, item.quantity + 1)}
-                          className="bg-white bg-opacity-20 text-white w-7 h-7 sm:w-6 sm:h-6 rounded flex items-center justify-center text-sm font-semibold"
-                        >
-                          +
+                          <img src={assetUrl('/assets/trash-2.svg')} alt="Eliminar" className="w-4 h-4" onError={handleImgError} />
                         </button>
                       </div>
-                      <span className="text-white font-bold text-sm sm:text-base">${item.price * item.quantity}</span>
+                      
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center space-x-3">
+                          <button
+                            onClick={() => handleQuantityChange(item.id, item.quantity - 1)}
+                            className="bg-white/20 hover:bg-white/30 text-white w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-105"
+                          >
+                            <img src={assetUrl('/assets/minus-circle.svg')} alt="Menos" className="w-4 h-4" onError={handleImgError} />
+                          </button>
+                          <span className="text-white text-base w-8 text-center font-semibold bg-white/10 rounded-lg py-1">{item.quantity}</span>
+                          <button
+                            onClick={() => handleQuantityChange(item.id, item.quantity + 1)}
+                            className="bg-white/20 hover:bg-white/30 text-white w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-105"
+                          >
+                            <img src={assetUrl('/assets/plus-circle.svg')} alt="Más" className="w-4 h-4" onError={handleImgError} />
+                          </button>
+                        </div>
+                        <span className="text-white font-bold text-lg">${item.price * item.quantity}</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Customer Info Form */}
-              <div className="space-y-3 sm:space-y-4 mb-4 sm:mb-6">
-                <h3 className="text-white font-semibold text-base sm:text-lg">Información de contacto</h3>
-                
-                <div className="flex gap-2">
-                  <input
-                    type="tel"
-                    placeholder="Número de teléfono"
-                    value={customerInfo.phone}
-                    onChange={(e) => handleInputChange('phone', e.target.value)}
-                    className="flex-1 p-3 sm:p-3 text-sm sm:text-base rounded-lg bg-white bg-opacity-20 text-white placeholder-gray-300 border border-white border-opacity-30 focus:border-opacity-60 focus:outline-none transition-all"
-                  />
-                  <GreenButton 
-                    onClick={handleVerifyPhone}
-                    disabled={!customerInfo.phone}
-                  />
+                  ))}
                 </div>
 
-                {isVerified && (
-                  <>
-                    <div className="text-white text-sm text-center p-2">
-                      {isNewCustomer ? (
-                        <>
-                          <p className="mb-2">¡Bienvenido a La Juanita! Por favor ingresa tu nombre:</p>
-                          <input
-                            type="text"
-                            placeholder="Nombre completo"
-                            value={customerInfo.name}
-                            onChange={(e) => handleInputChange('name', e.target.value)}
-                            className="w-full p-3 sm:p-3 text-sm sm:text-base rounded-lg bg-white bg-opacity-20 text-white placeholder-gray-300 border border-white border-opacity-30 focus:border-opacity-60 focus:outline-none transition-all"
-                          />
-                        </>
-                      ) : (
-                        <p className="text-green-300">
-                          Este es tu pedido número {orderCount}, ¡gracias por tu preferencia!
-                        </p>
+                {/* Customer Info Form */}
+                <div className="space-y-6 mb-8">
+                  <div className="space-y-4">
+                    <h3 className="text-white font-semibold text-lg flex items-center space-x-2">
+                      <img src={assetUrl('/assets/phone.svg')} alt="Teléfono" className="w-5 h-5" onError={handleImgError} />
+                      <span>Información de contacto</span>
+                    </h3>
+                    
+                    <div className="flex gap-3 relative">
+                      <input
+                        type="tel"
+                        placeholder="Número de teléfono"
+                        value={customerInfo.phone}
+                        onChange={(e) => handlePhoneChange(e.target.value)}
+                        className="flex-1 p-3 text-sm rounded-xl bg-white/10 backdrop-blur-sm text-white placeholder-white/50 border border-white/20 focus:border-white/40 focus:outline-none focus:ring-2 focus:ring-white/20 transition-all duration-200 h-10"
+                        maxLength={10}
+                      />
+                      
+                      {/* Modern verification button - only shows when 10 digits */}
+                      {customerInfo.phone.length === 10 && (
+                        <div className="relative">
+                          <button
+                            onClick={handleVerifyPhone}
+                            className="group h-10 px-2 sm:px-4 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-xl font-medium transition-all duration-200 flex items-center space-x-1 sm:space-x-2 shadow-lg hover:shadow-green-500/25 hover:scale-105 min-w-0 flex-shrink-0"
+                          >
+                            <img src={assetUrl('/assets/check-circle.svg')} alt="Verificar" className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" onError={handleImgError} />
+                            <span className="text-xs sm:text-sm whitespace-nowrap">Verificar</span>
+                          </button>
+                          
+                          {/* Tooltip/hint */}
+                          <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                            Haz clic para continuar
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Progress indicator when typing */}
+                      {customerInfo.phone.length > 0 && customerInfo.phone.length < 10 && (
+                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center space-x-1">
+                          <span className="text-white/60 text-xs">{customerInfo.phone.length}/10</span>
+                          <div className="w-2 h-2 bg-yellow-400/60 rounded-full animate-pulse"></div>
+                        </div>
                       )}
                     </div>
 
-                    {/* Delivery Type Selection */}
-                    <div className="space-y-3">
-                      <h4 className="text-white font-semibold text-sm">¿Cómo recibirás tu pedido?</h4>
-                      <div className="grid grid-cols-1 gap-2">
-                        <button
-                          onClick={() => setDeliveryType('pickup')}
-                          className={`p-3 rounded-lg border-2 transition-all ${
-                            deliveryType === 'pickup'
-                              ? 'bg-white bg-opacity-25 border-white text-white'
-                              : 'bg-white bg-opacity-10 border-white border-opacity-30 text-white hover:bg-opacity-20'
-                          }`}
-                        >
-                          <div className="flex items-center justify-center space-x-2">
-                            <span className="text-lg">🏪</span>
-                            <span className="font-medium">Recoger en tienda</span>
-                          </div>
-                        </button>
-                        
-                        <button
-                          onClick={() => setDeliveryType('delivery')}
-                          className={`p-3 rounded-lg border-2 transition-all ${
-                            deliveryType === 'delivery'
-                              ? 'bg-white bg-opacity-25 border-white text-white'
-                              : 'bg-white bg-opacity-10 border-white border-opacity-30 text-white hover:bg-opacity-20'
-                          }`}
-                        >
-                          <div className="flex items-center justify-center space-x-2">
-                            <span className="text-lg">🚗</span>
-                            <span className="font-medium">Entrega a domicilio</span>
-                          </div>
-                        </button>
-                        
-                        <button
-                          onClick={() => setDeliveryType('someone_else')}
-                          className={`p-3 rounded-lg border-2 transition-all ${
-                            deliveryType === 'someone_else'
-                              ? 'bg-white bg-opacity-25 border-white text-white'
-                              : 'bg-white bg-opacity-10 border-white border-opacity-30 text-white hover:bg-opacity-20'
-                          }`}
-                        >
-                          <div className="flex items-center justify-center space-x-2">
-                            <span className="text-lg">👥</span>
-                            <span className="font-medium">Para alguien más</span>
-                          </div>
-                        </button>
-                      </div>
+                    {isVerified && (
+                      <div className="space-y-4">
+                        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/10">
+                          {isNewCustomer ? (
+                            <div className="space-y-3">
+                              <p className="text-white/90 text-sm text-center">¡Bienvenido a La Juanita! Por favor ingresa tu nombre:</p>
+                              <input
+                                type="text"
+                                placeholder="Nombre completo"
+                                value={customerInfo.name}
+                                onChange={(e) => handleInputChange('name', e.target.value)}
+                                className="w-full p-3 text-sm rounded-xl bg-white/10 text-white placeholder-white/50 border border-white/20 focus:border-white/40 focus:outline-none focus:ring-2 focus:ring-white/20 transition-all duration-200"
+                              />
+                            </div>
+                          ) : (
+                            <p className="text-green-300/90 text-sm text-center">
+                              Bienvenido, gracias por tu preferencia, estamos listos para procesar tu pedido número {orderCount + 1}
+                            </p>
+                          )}
+                        </div>
 
-                      {/* Location/Address Input */}
-                      {deliveryType === 'delivery' && (
-                        <div className="space-y-2">
-                          <button
-                            onClick={getLocation}
-                            disabled={isLoadingLocation}
-                            className="w-full p-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
-                          >
-                            {isLoadingLocation ? (
-                              <>
-                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                                <span>Obteniendo ubicación...</span>
-                              </>
-                            ) : (
-                              <>
-                                <span>📍</span>
-                                <span>Usar mi ubicación actual</span>
-                              </>
-                            )}
-                          </button>
-                          {location && (
-                            <div className="p-3 bg-white bg-opacity-20 rounded-lg">
-                              <p className="text-white text-sm">
-                                <strong>Ubicación obtenida:</strong>
-                              </p>
-                              <a 
-                                href={location} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="text-blue-300 hover:text-blue-200 underline text-sm break-all"
+                        {/* Delivery Type Selection */}
+                        <div className="space-y-4">
+                          <h4 className="text-white font-semibold text-base flex items-center space-x-2">
+                            <img src={assetUrl('/assets/truck.svg')} alt="Entrega" className="w-5 h-5" onError={handleImgError} />
+                            <span>¿Cómo recibirás tu pedido?</span>
+                          </h4>
+                          
+                          <div className="grid grid-cols-3 gap-3">
+                            {/* Pickup Option */}
+                            <div className="flex flex-col items-center space-y-2">
+                              <button
+                                onClick={() => setDeliveryType('pickup')}
+                                className={`w-16 h-16 rounded-full border-2 transition-all duration-200 flex items-center justify-center ${
+                                  deliveryType === 'pickup'
+                                    ? 'bg-white/25 border-white/60 shadow-lg scale-105'
+                                    : 'bg-white/10 border-white/30 hover:bg-white/15 hover:border-white/40 hover:scale-105'
+                                }`}
                               >
-                                Ver en Google Maps
-                              </a>
+                                <img 
+                                  src={assetUrl('/assets/store.svg')} 
+                                  alt="Tienda" 
+                                  className={`w-7 h-7 transition-all duration-200 ${
+                                    deliveryType === 'pickup' ? 'brightness-110' : 'opacity-80'
+                                  }`} 
+                                  onError={handleImgError} 
+                                />
+                              </button>
+                              <p className={`text-xs text-center leading-tight transition-all duration-200 ${
+                                deliveryType === 'pickup' ? 'text-white font-medium' : 'text-white/70'
+                              }`}>
+                                Recoger en tienda
+                              </p>
+                            </div>
+                            
+                            {/* Delivery Option */}
+                            <div className="flex flex-col items-center space-y-2">
+                              <button
+                                onClick={() => setDeliveryType('delivery')}
+                                className={`w-16 h-16 rounded-full border-2 transition-all duration-200 flex items-center justify-center ${
+                                  deliveryType === 'delivery'
+                                    ? 'bg-white/25 border-white/60 shadow-lg scale-105'
+                                    : 'bg-white/10 border-white/30 hover:bg-white/15 hover:border-white/40 hover:scale-105'
+                                }`}
+                              >
+                                <img 
+                                  src={assetUrl('/assets/truck.svg')} 
+                                  alt="Domicilio" 
+                                  className={`w-7 h-7 transition-all duration-200 ${
+                                    deliveryType === 'delivery' ? 'brightness-110' : 'opacity-80'
+                                  }`} 
+                                  onError={handleImgError} 
+                                />
+                              </button>
+                              <p className={`text-xs text-center leading-tight transition-all duration-200 ${
+                                deliveryType === 'delivery' ? 'text-white font-medium' : 'text-white/70'
+                              }`}>
+                                Entrega a mi ubicación actual
+                              </p>
+                            </div>
+                            
+                            {/* Someone Else Option */}
+                            <div className="flex flex-col items-center space-y-2">
+                              <button
+                                onClick={() => setDeliveryType('someone_else')}
+                                className={`w-16 h-16 rounded-full border-2 transition-all duration-200 flex items-center justify-center ${
+                                  deliveryType === 'someone_else'
+                                    ? 'bg-white/25 border-white/60 shadow-lg scale-105'
+                                    : 'bg-white/10 border-white/30 hover:bg-white/15 hover:border-white/40 hover:scale-105'
+                                }`}
+                              >
+                                <img 
+                                  src={assetUrl('/assets/users.svg')} 
+                                  alt="Otra ubicación" 
+                                  className={`w-7 h-7 transition-all duration-200 ${
+                                    deliveryType === 'someone_else' ? 'brightness-110' : 'opacity-80'
+                                  }`} 
+                                  onError={handleImgError} 
+                                />
+                              </button>
+                              <p className={`text-xs text-center leading-tight transition-all duration-200 ${
+                                deliveryType === 'someone_else' ? 'text-white font-medium' : 'text-white/70'
+                              }`}>
+                                Entrega a otra ubicación
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Location/Address Input */}
+                          {deliveryType === 'delivery' && (
+                            <div className="space-y-3">
+                              <button
+                                onClick={getLocation}
+                                disabled={isLoadingLocation}
+                                className="w-full h-8 bg-green-600/90 hover:bg-green-600 disabled:bg-gray-600/50 text-white rounded-xl font-medium transition-all duration-200 flex items-center justify-center space-x-2 backdrop-blur-sm text-sm"
+                              >
+                                {isLoadingLocation ? (
+                                  <>
+                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                    <span>Obteniendo ubicación...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <img src={assetUrl('/assets/map-pin.svg')} alt="Ubicación" className="w-4 h-4" onError={handleImgError} />
+                                    <span>Usar mi ubicación actual</span>
+                                  </>
+                                )}
+                              </button>
+                              {location && (
+                                <div className="p-4 bg-white/10 rounded-xl border border-white/10">
+                                   <div className="flex items-center space-x-2">
+                                    <img src={assetUrl('/assets/check-circle.svg')} alt="Confirmado" className="w-4 h-4 text-green-400 flex-shrink-0" onError={handleImgError} />
+                                    <p className="text-white/90 text-sm font-medium flex-shrink-0">
+                                      Ubicación obtenida:
+                                    </p>
+                                    <a 
+                                      href={location} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="text-blue-300 hover:text-blue-200 underline text-sm truncate"
+                                    >
+                                      Ver en Google Maps →
+                                    </a>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {deliveryType === 'someone_else' && (
+                            <div className="space-y-3">
+                              <label className="text-white/90 text-sm font-medium block">Dirección completa:</label>
+                              
+                              <div className="space-y-3">
+                                <input
+                                  type="text"
+                                  placeholder="Calle"
+                                  value={customAddress.street}
+                                  onChange={(e) => setCustomAddress(prev => ({ ...prev, street: e.target.value }))}
+                                  className="w-full p-3 text-sm rounded-xl bg-white/10 text-white placeholder-white/50 border border-white/20 focus:border-white/40 focus:outline-none focus:ring-2 focus:ring-white/20 transition-all duration-200"
+                                />
+                                
+                                <div className="grid grid-cols-2 gap-3">
+                                  <input
+                                    type="text"
+                                    placeholder="Número"
+                                    value={customAddress.number}
+                                    onChange={(e) => setCustomAddress(prev => ({ ...prev, number: e.target.value }))}
+                                    className="w-full p-3 text-sm rounded-xl bg-white/10 text-white placeholder-white/50 border border-white/20 focus:border-white/40 focus:outline-none focus:ring-2 focus:ring-white/20 transition-all duration-200"
+                                  />
+                                  
+                                  <input
+                                    type="text"
+                                    placeholder="Colonia"
+                                    value={customAddress.neighborhood}
+                                    onChange={(e) => setCustomAddress(prev => ({ ...prev, neighborhood: e.target.value }))}
+                                    className="w-full p-3 text-sm rounded-xl bg-white/10 text-white placeholder-white/50 border border-white/20 focus:border-white/40 focus:outline-none focus:ring-2 focus:ring-white/20 transition-all duration-200"
+                                  />
+                                </div>
+                                
+                                <div className="text-xs text-white/60 text-center">
+                                  La dirección será: [Calle] [Número], [Colonia], Montemorelos, Nuevo León
+                                </div>
+                              </div>
                             </div>
                           )}
                         </div>
-                      )}
 
-                      {deliveryType === 'someone_else' && (
-                        <div className="space-y-2">
-                          <label className="text-white text-sm font-medium block">Dirección completa:</label>
-                          <textarea
-                            placeholder="Ingresa la dirección completa (calle, número, colonia, referencias)"
-                            value={customAddress}
-                            onChange={(e) => setCustomAddress(e.target.value)}
-                            rows={3}
-                            className="w-full p-3 text-sm rounded-lg bg-white bg-opacity-20 text-white placeholder-gray-300 border border-white border-opacity-30 focus:border-opacity-60 focus:outline-none transition-all resize-none"
-                          />
-                        </div>
-                      )}
-                    </div>
+                        {/* Time Selection */}
+                        {deliveryType && (
+                          <div className="space-y-4">
+                            <h4 className="text-white font-semibold text-base flex items-center space-x-2">
+                              <img src={assetUrl('/assets/clock.svg')} alt="Hora" className="w-5 h-5" onError={handleImgError} />
+                              <span>
+                                {deliveryType === 'pickup' ? 'Hora de recolección' : 'Hora de entrega'}
+                              </span>
+                            </h4>
+                            
+                            <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+                              <div className="text-xs text-white/70 mb-3 text-center">
+                                Horario disponible: {BUSINESS_START_HOUR}:00 - {BUSINESS_END_HOUR}:00
+                              </div>
+                              
+                              <div className="flex items-center justify-center space-x-3">
+                                <div className="text-center">
+                                  <label className="text-white/70 text-xs block mb-1">Hora</label>
+                                  <input
+                                    type="text"
+                                    placeholder="12"
+                                    value={customerInfo.hour}
+                                    onChange={(e) => handleHourChange(e.target.value)}
+                                    className="w-16 p-3 text-base text-center rounded-xl bg-white/10 text-white placeholder-white/50 border border-white/20 focus:border-white/40 focus:outline-none focus:ring-2 focus:ring-white/20 transition-all duration-200"
+                                    maxLength={2}
+                                  />
+                                </div>
+                                <div className="text-white text-xl font-bold mt-5">:</div>
+                                <div className="text-center">
+                                  <label className="text-white/70 text-xs block mb-1">Min</label>
+                                  <input
+                                    type="text"
+                                    placeholder="00"
+                                    value={customerInfo.minute}
+                                    onChange={(e) => handleMinuteChange(e.target.value)}
+                                    className="w-16 p-3 text-base text-center rounded-xl bg-white/10 text-white placeholder-white/50 border border-white/20 focus:border-white/40 focus:outline-none focus:ring-2 focus:ring-white/20 transition-all duration-200"
+                                    maxLength={2}
+                                  />
+                                </div>
+                              </div>
 
-                    {/* Time Selection - Only show after delivery type is selected */}
-                    {deliveryType && (
-                      <div className="space-y-2">
-                        <label className="text-white text-sm font-medium block">
-                          {deliveryType === 'pickup' ? 'Recogeré a las:' : 'Entregar a las:'}
-                        </label>
-                        <div className="text-xs text-white opacity-75 mb-2">
-                          Horario disponible: {BUSINESS_START_HOUR}:00 - {BUSINESS_END_HOUR}:00
-                        </div>
-                        
-                        <div className="space-y-3">
-                          <div>
-                            <label className="text-white text-xs mb-1 block opacity-80">Hora (24h)</label>
-                            <div className="flex items-center justify-center space-x-2">
-                              <input
-                                type="text"
-                                placeholder="12"
-                                value={customerInfo.hour}
-                                onChange={(e) => handleHourChange(e.target.value)}
-                                className="w-16 p-3 text-sm sm:text-base text-center rounded-lg bg-white bg-opacity-20 text-white placeholder-gray-300 border border-white border-opacity-30 focus:border-opacity-60 focus:outline-none transition-all"
-                                maxLength={2}
-                              />
-                              <span className="text-white text-lg font-bold">:</span>
-                              <input
-                                type="text"
-                                placeholder="00"
-                                value={customerInfo.minute}
-                                onChange={(e) => handleMinuteChange(e.target.value)}
-                                className="w-16 p-3 text-sm sm:text-base text-center rounded-lg bg-white bg-opacity-20 text-white placeholder-gray-300 border border-white border-opacity-30 focus:border-opacity-60 focus:outline-none transition-all"
-                                maxLength={2}
-                              />
-                            </div>
-                            <div className="text-xs text-white opacity-60 mt-1 text-center">
-                              Ejemplo: 12:00, 13:30, 14:45
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Display selected time if valid */}
-                        {customerInfo.hour && customerInfo.minute && validateSelectedTime() && (
-                          <div className="text-center mt-2">
-                            <div className="inline-block bg-white bg-opacity-20 rounded-lg px-3 py-1 text-white text-sm font-medium">
-                              Hora seleccionada: {(() => {
-                                const hours = parseInt(customerInfo.hour, 10);
-                                const minutes = parseInt(customerInfo.minute, 10);
-                                return formatDisplayTime(hours, minutes);
-                              })()}
+                              {/* Display selected time if valid */}
+                              {customerInfo.hour && customerInfo.minute && validateSelectedTime() && (
+                                <div className="text-center mt-4">
+                                  <div className="inline-block bg-green-500/20 border border-green-400/30 rounded-lg px-4 py-2 text-green-200 text-sm font-medium">
+                                    ✓ {(() => {
+                                      const hours = parseInt(customerInfo.hour, 10);
+                                      const minutes = parseInt(customerInfo.minute, 10);
+                                      return formatDisplayTime(hours, minutes);
+                                    })()}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
                         )}
                       </div>
                     )}
-                  </>
-                )}
-              </div>
+                  </div>
+                </div>
 
-              {/* Total */}
-              <div className="bg-white text-red-900 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6 text-center">
-                <div className="text-xl sm:text-2xl font-bold">Total: ${getTotalPrice()}</div>
-              </div>
+                {/* Total */}
+                <div className="relative mb-6">
+                  {/* Background glow effect */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-white/10 rounded-2xl blur-xl scale-105 opacity-30"></div>
+                  
+                  {/* Main total container */}
+                  <div className="relative bg-white/[0.08] backdrop-blur-md border border-white/20 rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.3)]">
+                    {/* Top section - Items count */}
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                        <span className="text-white/70 text-sm font-medium">
+                          {items.length} artículo{items.length !== 1 ? 's' : ''} en tu orden
+                        </span>
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <div className="w-1 h-1 bg-white/40 rounded-full"></div>
+                        <div className="w-1 h-1 bg-white/60 rounded-full"></div>
+                        <div className="w-1 h-1 bg-white/80 rounded-full"></div>
+                      </div>
+                    </div>
+                    
+                    {/* Divider line */}
+                    <div className="h-px bg-gradient-to-r from-transparent via-white/20 to-transparent mb-4"></div>
+                    
+                    {/* Total amount */}
+                    <div className="text-center">
+                      <div className="flex items-baseline justify-center space-x-2 mb-2">
+                        <span className="text-white/60 text-sm font-medium">Total</span>
+                        <div className="flex items-center">
+                          <span className="text-3xl font-bold text-white tracking-tight">
+                            ${getTotalPrice()}
+                          </span>
+                          <span className="text-white/70 text-lg font-medium ml-1">MXN</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Bottom accent */}
+                    <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-16 h-1 bg-gradient-to-r from-green-400/60 to-blue-400/60 rounded-full"></div>
+                  </div>
+                </div>
 
-              {/* Action Buttons */}
-              <div className="space-y-3">
-                <WhiteButtonIcon
-                  text="Enviar Pedido por WhatsApp"
-                  onClick={handleSendOrder}
-                  disabled={!isOrderValid()}
-                  className={`w-full justify-center font-bold py-3 sm:py-3 text-sm sm:text-base rounded-full min-h-[48px] sm:min-h-auto ${!isOrderValid() ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  iconPath="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.479 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"
-                />
-                
-                <WhiteButtonTrans
-                  text="Seguir comprando"
-                  onClick={onClose}
-                  className="w-full justify-center font-semibold text-sm sm:text-base py-3 min-h-[48px] sm:min-h-auto"
-                />
-              </div>
-            </>
-          )}
+                {/* Action Buttons */}
+                <div className="space-y-3">
+                  <WhiteButtonIcon
+                    text="Enviar Pedido por WhatsApp"
+                    onClick={handleSendOrder}
+                    disabled={!isOrderValid()}
+                    className={`w-full justify-center font-bold text-sm rounded-xl transition-all duration-200 h-10 ${
+                      !isOrderValid() 
+                        ? 'opacity-50 cursor-not-allowed' 
+                        : 'hover:scale-[1.02] shadow-lg'
+                    }`}
+                    iconPath="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.479 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"
+                  />
+                  
+                  <WhiteButtonTrans
+                    text="Seguir comprando"
+                    onClick={onClose}
+                    disabled={false}
+                    className={`w-full justify-center font-semibold text-sm rounded-xl transition-all duration-200 hover:bg-white/10 h-8`}
+                  />
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+      
+      {/* Success Modal */}
+      <ModalSuccess isOpen={showSuccessModal} onClose={handleSuccessClose} />
+    </>
   );
 };
 
