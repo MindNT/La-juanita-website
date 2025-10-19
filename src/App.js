@@ -14,40 +14,20 @@ import ContactoSection from './pages/ContactoSection';
 import Footer from './pages/Footer';
 import ModalBeta from './components/ModalBeta';
 import ModalBilling from './components/ModalBilling';
-import ModalPermissions from './components/ModalPermissions';
 import ModalLoader from './components/ModalLoader';
 
 function App() {
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [showBillingModal, setShowBillingModal] = useState(false);
-  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [showLoader, setShowLoader] = useState(false);
   const [loaderProgress, setLoaderProgress] = useState(0);
+  const [orderCode, setOrderCode] = useState('');
 
-  //const API_URL = "http://143.110.239.79:5010"; // tu base URL del backend
   const API_URL = "https://lajuanita.mindnt.com.mx";
   //const API_URL = "http://localhost:5010"; // tu base URL del backend
 
-  useEffect(() => {
-    // Check if permissions have already been requested in this session
-    const permissionsRequested = sessionStorage.getItem('permissions_requested');
-    
-    if (!permissionsRequested) {
-      // Show permissions modal first
-      const timer = setTimeout(() => {
-        setShowPermissionsModal(true);
-      }, 1000); // Slightly longer delay for better UX
-
-      return () => clearTimeout(timer);
-    }
-  }, []);
-
   const handleCloseModal = () => {
     setShowWelcomeModal(false);
-  };
-
-  const handleClosePermissions = () => {
-    setShowPermissionsModal(false);
   };
 
   const handleCartClick = () => {
@@ -64,19 +44,21 @@ function App() {
     setShowLoader(true);
     setLoaderProgress(0);
 
+    // Generate order code at the start of processing
+    const generatedOrderCode = Math.random().toString(36).substring(2, 10).toUpperCase();
+    setOrderCode(generatedOrderCode);
+
     try {
-      // Simulate progress updates over 5 seconds
       const progressInterval = setInterval(() => {
         setLoaderProgress(prev => {
           if (prev >= 90) {
             clearInterval(progressInterval);
             return 90;
           }
-          return prev + 5; // Slower increment for 5 second duration
+          return prev + 5;
         });
-      }, 250); // 250ms intervals for smoother animation
+      }, 250);
 
-      // Process order logic here (moved from ModalBilling)
       // If it's a new customer, add them to the database first
       if (orderData.isNewCustomer) {
         await addCustomer(orderData.customerInfo.name, orderData.customerInfo.phone);
@@ -88,7 +70,8 @@ function App() {
         items: {},
         total_amount: parseFloat(orderData.totalPrice),
         maps_url: '',
-        promotions: {}
+        promotions: {},
+        code_order: generatedOrderCode  // Add the generated order code
       };
 
       // Convert cart items to the required format
@@ -111,29 +94,16 @@ function App() {
       clearInterval(progressInterval);
       setLoaderProgress(100);
 
-      // Wait for user to see the completion (3 seconds)
+      // Wait for completion animation
       setTimeout(() => {
-        // Hide loader
         setShowLoader(false);
         setLoaderProgress(0);
         
-        // Open WhatsApp
-        const whatsappNumber = '525659105865';
-        const message = formatOrderForWhatsApp(orderData);
-        const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${message}`;
-        
-        try {
-          window.open(whatsappUrl, '_blank');
-        } catch (error) {
-          console.error('Error opening WhatsApp:', error);
-          alert(`Error al abrir WhatsApp automáticamente. Puedes copiar este enlace y abrirlo manualmente: ${whatsappUrl}`);
-        }
-        
-        // Show success modal
+        // Show success modal with order data and code
         setTimeout(() => {
-          onComplete();
-        }, 800);
-      }, 3000);
+          onComplete(orderData);
+        }, 500);
+      }, 2000);
 
     } catch (error) {
       console.error('Error processing order:', error);
@@ -175,6 +145,7 @@ function App() {
       params.append('items', JSON.stringify(orderData.items));
       params.append('maps_url', orderData.maps_url || '');
       params.append('promotions', JSON.stringify(orderData.promotions));
+      params.append('code_order', orderData.code_order);  // Add the order code parameter
       
       const response = await fetch(`${API_URL}/orders/save-order?${params.toString()}`, {
         method: 'POST',
@@ -191,40 +162,9 @@ function App() {
       return data;
     } catch (error) {
       console.error('Error saving order:', error);
-      alert('Error al guardar el pedido. El pedido se enviará por WhatsApp de todas formas.');
-      return null;
+      alert('Error al guardar el pedido.');
+      throw error;
     }
-  };
-
-  const formatOrderForWhatsApp = (orderData) => {
-    let message = `🍽️ *NUEVA ORDEN - LA JUANITA*\n\n`;
-    message += `👤 *Cliente:* ${orderData.customerInfo.name}\n`;
-    message += `📱 *Teléfono:* ${orderData.customerInfo.phone}\n`;
-    message += `📅 *Fecha:* ${orderData.customerInfo.date}\n`;
-    message += `⏰ *Hora:* ${orderData.customerInfo.hour}:${orderData.customerInfo.minute}\n\n`;
-    
-    // Add delivery information
-    if (orderData.deliveryType === 'pickup') {
-      message += `🏪 *Tipo:* Recoger en tienda\n\n`;
-    } else if (orderData.deliveryType === 'delivery') {
-      message += `🚗 *Tipo:* Entrega a domicilio\n`;
-      message += `📍 *Ubicación:* ${orderData.location}\n\n`;
-    } else if (orderData.deliveryType === 'someone_else') {
-      const fullAddress = `${orderData.customAddress.street.trim()} ${orderData.customAddress.number.trim()}, ${orderData.customAddress.neighborhood.trim()}, Montemorelos, Nuevo León`;
-      message += `👥 *Tipo:* Para alguien más\n`;
-      message += `📍 *Dirección:* ${fullAddress}\n\n`;
-    }
-    
-    message += `🛒 *PEDIDO:*\n`;
-    
-    orderData.items.forEach(item => {
-      message += `• ${item.quantity}x ${item.title} - $${item.price * item.quantity}\n`;
-    });
-    
-    message += `\n💰 *Total: $${orderData.totalPrice}*\n\n`;
-    message += `¡Gracias por elegir La Juanita! 🙏`;
-    
-    return encodeURIComponent(message);
   };
 
   return (
@@ -246,9 +186,6 @@ function App() {
           }}
         />
         
-        {/* Modal de permisos */}
-        <ModalPermissions isOpen={showPermissionsModal} onClose={handleClosePermissions} />
-        
         {/* Modal de loader */}
         <ModalLoader isOpen={showLoader} progress={loaderProgress} />
         
@@ -257,6 +194,7 @@ function App() {
           isOpen={showBillingModal} 
           onClose={handleCloseBilling} 
           onStartProcessing={handleStartProcessing}
+          orderCode={orderCode}
         />
         
         {/* Navbar */}

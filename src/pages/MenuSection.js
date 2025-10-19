@@ -126,8 +126,8 @@ const MenuSection = () => {
 
         {/* Grid de productos */}
         {filteredProducts.length > 0 ? (
-          <div className="grid grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-6 lg:gap-8">
-            {filteredProducts.map((item) => (
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-6 lg:gap-8 justify-items-center">
+            {filteredProducts.map((item, index) => (
               <ProductCard
                 key={item.id}
                 id={item.id}
@@ -135,6 +135,8 @@ const MenuSection = () => {
                 title={item.Nombre}
                 description={item.description || 'Sin descripción'}
                 price={item.price}
+                availability={item.product_counter || 0}
+                applyPromotions={item.apply_promotions}
                 onAddClick={() => handleAddClick(item)}
               />
             ))}

@@ -29,7 +29,7 @@ const HeroSection = () => {
   };
 
   return (
-    <div className="container mx-auto px-4 md:px-6 py-8 md:py-16 pt-20 md:pt-8">
+    <div className="container mx-auto px-4 md:px-6 py-8 md:py-16 pt-24 sm:pt-28 md:pt-8">
       {/* Main content */}
       <div className="flex w-full items-center min-h-screen flex-col">
         <div className="flex w-full items-center flex-1 flex-col md:flex-row">
@@ -54,7 +54,7 @@ const HeroSection = () => {
             
             {/* Description */}
             <p className="text-white text-base md:text-lg leading-relaxed max-w-lg mx-auto md:mx-0">
-              Por darnos tu confianza en este inicio, queremos recompensarte con un precio único que no encontrarás en otro lugar, tu platillo por solo $ 99 pesos (Plato fuerte y dos guarniciones)
+              Por darnos tu confianza en este inicio, queremos recompensarte
             </p>
             
             {/* Button */}
@@ -68,14 +68,14 @@ const HeroSection = () => {
             <img 
               src={getCurrentImage()}
               alt="Comida casera" 
-              className="max-w-full h-auto object-cover max-h-64 md:max-h-none"
+              className="max-w-full h-auto object-cover md:max-h-none w-full max-w-md md:max-w-full"
               onError={handleImgError}
             />
           </div>
         </div>
 
-        {/* Category buttons */}
-        <div className="flex justify-center md:justify-between gap-2 md:gap-4 flex-wrap w-full mt-8 md:mt-0">
+        {/* Category buttons - Hidden on mobile */}
+        <div className="hidden md:flex justify-center md:justify-between gap-2 md:gap-4 flex-wrap w-full mt-8 md:mt-0">
           {categories.map((category) => (
             <WhiteButtonTrans
               key={category.name}

@@ -54,18 +54,31 @@ export const CartProvider = ({ children }) => {
 
   const addItem = (item) => {
     const existingItem = state.items.find(existingItem => existingItem.id === item.id);
+    const currentQuantity = existingItem ? existingItem.quantity : 0;
+    
+    // Check if we can add more items based on availability
+    if (currentQuantity >= item.availability) {
+      toast.error(`No hay más ${item.title} disponibles`, {
+        description: `Solo quedan ${item.availability} en stock`,
+        duration: 3000,
+      });
+      return;
+    }
     
     dispatch({ type: 'ADD_ITEM', payload: item });
     
     // Show toast notification
     if (existingItem) {
+      const newQuantity = existingItem.quantity + 1;
+      const remaining = item.availability - newQuantity;
       toast.success(`Se agregó otro ${item.title} al carrito`, {
-        description: `Cantidad: ${existingItem.quantity + 1}`,
+        description: `Cantidad: ${newQuantity}${remaining > 0 ? ` (quedan ${remaining})` : ' (último disponible)'}`,
         duration: 3000,
       });
     } else {
+      const remaining = item.availability - 1;
       toast.success(`${item.title} agregado al carrito`, {
-        description: `$${item.price}`,
+        description: `$${item.price}${remaining > 0 ? ` (quedan ${remaining})` : ' (último disponible)'}`,
         duration: 3000,
       });
     }
