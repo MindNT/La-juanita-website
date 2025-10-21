@@ -27,6 +27,7 @@ const ModalBilling = ({ isOpen, onClose, onStartProcessing, orderCode }) => {
   const [isVerified, setIsVerified] = useState(false);
   const [isNewCustomer, setIsNewCustomer] = useState(false);
   const [orderCount, setOrderCount] = useState(0);
+  const [customerName, setCustomerName] = useState(''); // Add state for customer name
   const [deliveryType, setDeliveryType] = useState(''); // 'pickup', 'delivery', 'someone_else'
   const [location, setLocation] = useState('');
   const [customAddress, setCustomAddress] = useState({
@@ -36,6 +37,7 @@ const ModalBilling = ({ isOpen, onClose, onStartProcessing, orderCode }) => {
   });
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [promotionData, setPromotionData] = useState(null); // Store promotion results
 
   // Reset form to initial state
   const resetForm = () => {
@@ -49,6 +51,7 @@ const ModalBilling = ({ isOpen, onClose, onStartProcessing, orderCode }) => {
     setIsVerified(false);
     setIsNewCustomer(false);
     setOrderCount(0);
+    setCustomerName(''); // Reset customer name
     setDeliveryType('');
     setLocation('');
     setCustomAddress({
@@ -57,6 +60,7 @@ const ModalBilling = ({ isOpen, onClose, onStartProcessing, orderCode }) => {
       neighborhood: ''
     });
     setIsLoadingLocation(false);
+    setPromotionData(null); // Reset promotion data
   };
 
   const handleQuantityChange = (itemId, newQuantity) => {
@@ -157,7 +161,10 @@ const ModalBilling = ({ isOpen, onClose, onStartProcessing, orderCode }) => {
       }
       
       const data = await response.json();
-      return data.exists;
+      return {
+        exists: data.exists,
+        name: data.name || ''
+      };
     } catch (error) {
       console.error('Error verifying phone number:', error);
       alert('Error al verificar el número de teléfono. Inténtalo de nuevo.');
@@ -196,11 +203,16 @@ const ModalBilling = ({ isOpen, onClose, onStartProcessing, orderCode }) => {
     const response = await verifyPhoneNumber(customerInfo.phone);
     if (response !== null) {
       setIsVerified(true);
-      setIsNewCustomer(response === 0);
-      if (response === 1) {
-        // For existing customers, get real order count from API
+      setIsNewCustomer(response.exists === 0);
+      
+      if (response.exists === 1) {
+        // For existing customers, store the name and get real order count from API
+        setCustomerName(response.name);
         const realOrderCount = await getOrderCountByPhone(customerInfo.phone);
         setOrderCount(realOrderCount);
+      } else {
+        // Clear customer name for new customers
+        setCustomerName('');
       }
     }
   };
@@ -310,34 +322,41 @@ const ModalBilling = ({ isOpen, onClose, onStartProcessing, orderCode }) => {
       return;
     }
 
-    // Prepare initial order data
-    const orderData = {
+    // STEP 1: Prepare initial order data for promotion check
+    const initialOrderData = {
       customerInfo,
       deliveryType,
       location,
       customAddress,
       items,
       totalPrice: getTotalPrice(),
-      isNewCustomer,
-      orderCode // Add order code to the data
+      isNewCustomer
     };
 
-    // Check for promotions first
-    const promotionResult = await checkPromotions(orderData);
+    // STEP 2: Check for promotions first
+    const promotionResult = await checkPromotions(initialOrderData);
 
-    // Update order data with promotion information
+    // Store promotion data in state for display
+    setPromotionData(promotionResult);
+
+    // STEP 3: Prepare the final order data with promotions and discounted price
     const finalOrderData = {
-      ...orderData,
-      promotions: promotionResult.promotions,
-      originalTotal: orderData.totalPrice,
-      finalTotal: promotionResult.updatedTotal,
+      customerInfo,
+      deliveryType,
+      location,
+      customAddress,
+      items,
+      promotions: promotionResult.promotions, // dict_combos_apply: {"4":1}
+      originalTotal: getTotalPrice(),
+      totalPrice: promotionResult.subtotal, // Use subtotal (with discount) as the final price
       discountPercentage: promotionResult.discountPercentage,
-      subtotal: promotionResult.subtotal,
-      hasPromotions: promotionResult.hasPromotions
+      hasPromotions: promotionResult.hasPromotions,
+      isNewCustomer
     };
 
-    // Start processing with the updated order data
-    onStartProcessing(finalOrderData, (orderData) => {
+    // STEP 4: Generate order code and save order (delegate to parent)
+    // The parent component will generate the order code and save with finalOrderData
+    onStartProcessing(finalOrderData, (savedOrderData) => {
       setShowSuccessModal(true);
     });
   };
@@ -433,6 +452,14 @@ const ModalBilling = ({ isOpen, onClose, onStartProcessing, orderCode }) => {
     if (deliveryType === 'someone_else' && (!customAddress.street.trim() || !customAddress.number.trim() || !customAddress.neighborhood.trim())) return false;
     
     return true;
+  };
+
+  // Get the display price (with discount if available)
+  const getDisplayPrice = () => {
+    if (promotionData && promotionData.hasPromotions) {
+      return promotionData.subtotal;
+    }
+    return getTotalPrice();
   };
 
   if (!isOpen) return null;
@@ -572,7 +599,7 @@ const ModalBilling = ({ isOpen, onClose, onStartProcessing, orderCode }) => {
                             </div>
                           ) : (
                             <p className="text-green-300/90 text-sm text-center">
-                              Bienvenido, gracias por tu preferencia, estamos listos para procesar tu pedido número {orderCount + 1}
+                              Bienvenido {customerName}, gracias por tu preferencia, estamos listos para procesar tu pedido número {orderCount + 1}
                             </p>
                           )}
                         </div>
@@ -830,17 +857,36 @@ const ModalBilling = ({ isOpen, onClose, onStartProcessing, orderCode }) => {
                     {/* Divider line */}
                     <div className="h-px bg-gradient-to-r from-transparent via-white/20 to-transparent mb-4"></div>
                     
+                    {/* Show original price if there's a discount */}
+                    {promotionData && promotionData.hasPromotions && (
+                      <div className="text-center mb-2">
+                        <div className="flex items-center justify-center space-x-2">
+                          <span className="text-white/50 text-sm line-through">
+                            ${getTotalPrice()} MXN
+                          </span>
+                          <span className="bg-green-500/30 text-green-200 text-xs px-2 py-1 rounded-full font-medium">
+                            -{promotionData.discountPercentage}%
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    
                     {/* Total amount */}
                     <div className="text-center">
                       <div className="flex items-baseline justify-center space-x-2 mb-2">
                         <span className="text-white/60 text-sm font-medium">Total</span>
                         <div className="flex items-center">
                           <span className="text-3xl font-bold text-white tracking-tight">
-                            ${getTotalPrice()}
+                            ${getDisplayPrice()}
                           </span>
                           <span className="text-white/70 text-lg font-medium ml-1">MXN</span>
                         </div>
                       </div>
+                      {promotionData && promotionData.hasPromotions && (
+                        <p className="text-green-300/90 text-xs font-medium">
+                          ¡Descuento aplicado!
+                        </p>
+                      )}
                     </div>
                     
                     {/* Bottom accent */}
@@ -875,7 +921,7 @@ const ModalBilling = ({ isOpen, onClose, onStartProcessing, orderCode }) => {
         </div>
       </div>
       
-      {/* Success Modal - now receives orderData and orderCode */}
+      {/* Success Modal - now receives orderData with correct discounted price */}
       <ModalSuccess 
         isOpen={showSuccessModal} 
         onClose={handleSuccessClose}
@@ -885,7 +931,10 @@ const ModalBilling = ({ isOpen, onClose, onStartProcessing, orderCode }) => {
           location,
           customAddress,
           items,
-          totalPrice: getTotalPrice(),
+          totalPrice: promotionData ? promotionData.subtotal : getTotalPrice(),
+          originalTotal: getTotalPrice(),
+          hasPromotions: promotionData?.hasPromotions || false,
+          discountPercentage: promotionData?.discountPercentage || 0,
           isNewCustomer
         }}
         orderCode={orderCode}

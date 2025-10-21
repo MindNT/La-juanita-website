@@ -64,14 +64,14 @@ function App() {
         await addCustomer(orderData.customerInfo.name, orderData.customerInfo.phone);
       }
 
-      // Prepare order data for saving
+      // Prepare order data for saving with promotions and discounted price
       const saveData = {
         phone: orderData.customerInfo.phone,
         items: {},
-        total_amount: parseFloat(orderData.totalPrice),
+        total_amount: parseFloat(orderData.totalPrice), // Use the discounted totalPrice from orderData
         maps_url: '',
-        promotions: {},
-        code_order: generatedOrderCode  // Add the generated order code
+        promotions: orderData.promotions || {}, // Use promotions from orderData (dict_combos_apply)
+        code_order: generatedOrderCode
       };
 
       // Convert cart items to the required format

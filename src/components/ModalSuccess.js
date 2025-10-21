@@ -136,6 +136,30 @@ const ModalSuccess = ({ isOpen, onClose, orderData, orderCode }) => {
               </div>
             </div>
 
+            {/* Items Detail - New Section */}
+            <div className="mb-4 pb-3 border-b border-white/20">
+              <h4 className="text-white font-semibold text-xs mb-3 border-b border-white/20 pb-1">
+                Artículos del Pedido
+              </h4>
+              <div className="space-y-2">
+                {orderData.items.map((item, index) => (
+                  <div key={item.id || index} className="flex justify-between items-start text-xs">
+                    <div className="flex-1">
+                      <p className="text-white/90 leading-tight">
+                        {item.quantity}x {item.title}
+                      </p>
+                      <p className="text-white/60 text-[10px]">
+                        ${item.price} c/u
+                      </p>
+                    </div>
+                    <span className="text-white font-medium ml-2">
+                      ${item.price * item.quantity}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* Order Summary */}
             <div className="space-y-2 mb-4">
               <h4 className="text-white font-semibold text-xs border-b border-white/20 pb-1">
@@ -146,9 +170,21 @@ const ModalSuccess = ({ isOpen, onClose, orderData, orderCode }) => {
                   {orderData.items.length} artículo{orderData.items.length !== 1 ? 's' : ''}
                 </span>
                 <span className="text-white font-semibold text-sm">
-                  ${orderData.totalPrice} MXN
+                  ${orderData.originalTotal || orderData.totalPrice} MXN
                 </span>
               </div>
+              
+              {/* Show discount if available */}
+              {orderData.hasPromotions && orderData.discountPercentage > 0 && (
+                <div className="flex justify-between items-center text-green-300">
+                  <span className="text-xs">
+                    Descuento ({orderData.discountPercentage}%)
+                  </span>
+                  <span className="text-sm font-semibold">
+                    -${(orderData.originalTotal - orderData.totalPrice).toFixed(0)} MXN
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Total */}
@@ -159,29 +195,22 @@ const ModalSuccess = ({ isOpen, onClose, orderData, orderCode }) => {
                   ${orderData.totalPrice} MXN
                 </span>
               </div>
-            </div>
-          </div>
-
-          {/* Important Note */}
-          <div className="mb-6 p-3 bg-yellow-500/20 border border-yellow-400/30 rounded-xl">
-            <div className="flex items-start space-x-2">
-              <div className="w-5 h-5 flex-shrink-0 mt-0.5">
-                <img src={assetUrl('/assets/alert-circle.svg')} alt="Importante" className="w-5 h-5" onError={handleImgError} />
-              </div>
-              <div>
-                <p className="text-yellow-100 font-medium text-xs mb-1">¡IMPORTANTE!</p>
-                <p className="text-yellow-100/90 text-xs leading-relaxed">
-                  Usa el código <span className="font-bold">{orderCode}</span> y tu número de teléfono para cualquier duda o aclaración.
+              {orderData.hasPromotions && (
+                <p className="text-green-300/90 text-xs font-medium">
+                  ¡Promoción aplicada!
                 </p>
-              </div>
+              )}
             </div>
           </div>
 
-          {/* Success indicators */}
-          <div className="flex justify-center space-x-2 mb-6">
-            <div className="w-2 h-2 bg-white/60 rounded-full animate-pulse"></div>
-            <div className="w-2 h-2 bg-white/80 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
-            <div className="w-2 h-2 bg-white rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+          {/* Status Indicator */}
+          <div className="text-center mb-6">
+            <p className="text-white/90 text-sm mb-3">Estado del pedido</p>
+            <div className="flex justify-center space-x-2">
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+              <div className="w-2 h-2 bg-white/80 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+            </div>
           </div>
           
           {/* Continue Button */}
