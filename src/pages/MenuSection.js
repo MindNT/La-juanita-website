@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import ProductCard from '../components/ProductCard';
 import WhiteButtonMenu from '../utils/WhiteButtonMenu';
 import { useCart } from '../context/CartContext';
@@ -100,52 +101,175 @@ const MenuSection = () => {
   // 🔹 6. Filtrar productos por categoría activa
   const filteredProducts = products.filter(p => p.category_id === activeCategory);
 
+  // Animation variants
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.1,
+        delayChildren: 0.2
+      }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      transition: {
+        duration: 0.5,
+        ease: "easeOut"
+      }
+    }
+  };
+
+  const categoryButtonVariants = {
+    hidden: { opacity: 0, scale: 0.8 },
+    visible: {
+      opacity: 1,
+      scale: 1,
+      transition: {
+        duration: 0.3,
+        ease: "easeOut"
+      }
+    }
+  };
+
+  const productGridVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.1,
+        delayChildren: 0.1
+      }
+    },
+    exit: {
+      opacity: 0,
+      transition: {
+        duration: 0.2
+      }
+    }
+  };
+
+  const productCardVariants = {
+    hidden: { opacity: 0, y: 30, scale: 0.9 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: {
+        duration: 0.4,
+        ease: "easeOut"
+      }
+    },
+    exit: {
+      opacity: 0,
+      y: -20,
+      scale: 0.95,
+      transition: {
+        duration: 0.2
+      }
+    }
+  };
+
   return (
-    <section className="w-full py-6 sm:py-16 px-3 sm:px-8">
-      <div className="max-w-6xl mx-auto">
+    <section className="w-full py-6 sm:py-16 px-4 md:px-6">
+      <div className="container mx-auto">
         {/* Título */}
-        <h2 className="text-white text-2xl sm:text-4xl lg:text-5xl font-bold mb-8 text-left">
+        <motion.h2 
+          className="text-white text-2xl sm:text-4xl lg:text-5xl font-bold mb-8 text-left"
+          initial={{ opacity: 0, x: -50 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+        >
           Descubre nuestro menú del día
-        </h2>
+        </motion.h2>
 
         {/* Botones de categorías */}
-        <div className="grid grid-cols-3 sm:flex sm:justify-start gap-2 sm:gap-4 mb-12">
+        <motion.div 
+          className="flex flex-wrap justify-center sm:justify-between lg:justify-start gap-2 sm:gap-4 lg:gap-8 xl:gap-12 mb-12"
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+        >
           {categories.length > 0 ? (
-            categories.map((category) => (
-              <WhiteButtonMenu
+            categories.map((category, index) => (
+              <motion.div
                 key={category.id}
-                text={category.name}
-                isActive={activeCategory === category.id}
-                onClick={() => handleCategoryClick(category.id)}
-              />
+                variants={categoryButtonVariants}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="flex-shrink-0"
+              >
+                <WhiteButtonMenu
+                  text={category.name}
+                  isActive={activeCategory === category.id}
+                  onClick={() => handleCategoryClick(category.id)}
+                />
+              </motion.div>
             ))
           ) : (
-            <p className="text-white">Cargando categorías...</p>
+            <motion.p 
+              className="text-white"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.5, repeat: Infinity, repeatType: "reverse" }}
+            >
+              Cargando categorías...
+            </motion.p>
           )}
-        </div>
+        </motion.div>
 
         {/* Grid de productos */}
-        {filteredProducts.length > 0 ? (
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-6 lg:gap-8 justify-items-center">
-            {filteredProducts.map((item, index) => (
-              <ProductCard
-                key={item.id}
-                id={item.id}
-                image={item.img_item}
-                title={item.Nombre}
-                description={item.description || 'Sin descripción'}
-                price={item.price}
-                availability={item.product_counter || 0}
-                applyPromotions={item.apply_promotions}
-                onAddClick={() => handleAddClick(item)}
-              />
-            ))}
-          </div>
-        ) : (
-          <p className="text-white text-center">
-            No hay productos disponibles para esta categoría hoy.
-          </p>
-        )}
+        <AnimatePresence mode="wait">
+          {filteredProducts.length > 0 ? (
+            <motion.div 
+              key={activeCategory}
+              className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-6 lg:gap-8 justify-items-center"
+              variants={productGridVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+            >
+              {filteredProducts.map((item, index) => (
+                <motion.div
+                  key={item.id}
+                  variants={productCardVariants}
+                  whileHover={{ 
+                    scale: 1.03,
+                    transition: { duration: 0.2 }
+                  }}
+                  layout
+                >
+                  <ProductCard
+                    id={item.id}
+                    image={item.img_item}
+                    title={item.Nombre}
+                    description={item.description || 'Sin descripción'}
+                    price={item.price}
+                    availability={item.product_counter || 0}
+                    applyPromotions={item.apply_promotions}
+                    onAddClick={() => handleAddClick(item)}
+                  />
+                </motion.div>
+              ))}
+            </motion.div>
+          ) : (
+            <motion.p 
+              key="no-products"
+              className="text-white text-center"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+            >
+              No hay productos disponibles para esta categoría hoy.
+            </motion.p>
+          )}
+        </AnimatePresence>
       </div>
     </section>
   );

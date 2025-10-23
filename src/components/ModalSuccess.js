@@ -1,7 +1,10 @@
-import React from 'react';
+import React, { useRef } from 'react';
+import { motion } from 'motion/react';
 import { assetUrl, handleImgError } from '../utils/imageHelpers';
 
 const ModalSuccess = ({ isOpen, onClose, orderData, orderCode }) => {
+  const ticketRef = useRef(null);
+  
   if (!isOpen || !orderData) return null;
 
   const formatDisplayTime = (hour, minute) => {
@@ -32,198 +35,647 @@ const ModalSuccess = ({ isOpen, onClose, orderData, orderCode }) => {
     }
   };
 
+  const downloadAsImage = async () => {
+    try {
+      // Try to dynamically import html2canvas
+      let html2canvas;
+      try {
+        html2canvas = (await import('html2canvas')).default;
+      } catch (importError) {
+        console.log('html2canvas not available, using fallback method');
+        // Fallback: prompt user to take screenshot
+        alert('Para descargar el comprobante:\n\n1. Toma una captura de pantalla de esta ventana\n2. O haz clic derecho sobre el ticket y selecciona "Guardar imagen como"\n\nEn dispositivos móviles: Toma una captura de pantalla usando los botones de tu teléfono.');
+        return;
+      }
+      
+      // Use the same ticketRef for both mobile and desktop
+      const targetElement = ticketRef.current;
+      
+      if (targetElement && html2canvas) {
+        // Show loading state
+        const originalText = document.querySelector('[data-download-btn] span')?.textContent;
+        const downloadBtn = document.querySelector('[data-download-btn]');
+        if (downloadBtn) {
+          downloadBtn.innerHTML = `
+            <svg class="w-5 h-5 animate-spin lg:w-6 lg:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            <span>Generando...</span>
+          `;
+        }
+
+        // Wait a bit for the UI to update
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Determine if mobile and get screen dimensions
+        const isMobile = window.innerWidth < 768;
+        const screenWidth = window.innerWidth;
+        const screenHeight = window.innerHeight;
+        
+        // Calculate optimal dimensions for mobile
+        const ticketWidth = isMobile ? Math.min(340, screenWidth - 40) : 384;
+        const scale = isMobile ? 3 : 3; // Higher scale for mobile to avoid blurriness
+        
+        // Enhanced canvas options optimized for mobile
+        const canvasOptions = {
+          backgroundColor: '#059669', // Green background
+          scale: scale,
+          useCORS: true,
+          allowTaint: true,
+          width: ticketWidth,
+          height: 'auto', // Let height be calculated automatically
+          scrollX: 0,
+          scrollY: 0,
+          logging: false,
+          imageTimeout: 20000,
+          // Mobile-specific optimizations
+          ...(isMobile && {
+            foreignObjectRendering: true,
+            removeContainer: false,
+            pixelRatio: window.devicePixelRatio || 1,
+            onclone: (clonedDoc, element) => {
+              // Ensure proper styling in the cloned element
+              const clonedTicket = clonedDoc.querySelector('[data-ticket-clone]');
+              if (clonedTicket) {
+                // Force proper dimensions
+                clonedTicket.style.width = ticketWidth + 'px';
+                clonedTicket.style.maxWidth = ticketWidth + 'px';
+                clonedTicket.style.transform = 'none';
+                clonedTicket.style.transition = 'none';
+                clonedTicket.style.position = 'static';
+                clonedTicket.style.overflow = 'visible';
+                
+                // Ensure text doesn't overflow
+                const textElements = clonedTicket.querySelectorAll('p, span, div');
+                textElements.forEach(el => {
+                  el.style.wordBreak = 'break-word';
+                  el.style.overflowWrap = 'break-word';
+                });
+              }
+            }
+          })
+        };
+
+        // Create canvas with proper error handling
+        let canvas;
+        try {
+          canvas = await html2canvas(targetElement, canvasOptions);
+        } catch (canvasError) {
+          console.error('Canvas generation error:', canvasError);
+          throw new Error('Error al generar la imagen del ticket');
+        }
+        
+        // Enhanced download approach with better error handling
+        const dataUrl = canvas.toDataURL('image/png', isMobile ? 0.92 : 0.98);
+        
+        if (!dataUrl || dataUrl === 'data:,') {
+          throw new Error('No se pudo generar la imagen');
+        }
+        
+        // Create and trigger download
+        const link = document.createElement('a');
+        link.download = `la-juanita-orden-${orderCode}.png`;
+        link.href = dataUrl;
+        
+        // Different download approach for mobile vs desktop
+        if (isMobile) {
+          // For mobile: try direct download first, fallback to opening in new tab
+          document.body.appendChild(link);
+          try {
+            link.click();
+          } catch (clickError) {
+            // Fallback: open in new tab for manual save
+            window.open(dataUrl, '_blank');
+          }
+          document.body.removeChild(link);
+        } else {
+          // Desktop: standard download
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
+
+        // Restore button text
+        if (downloadBtn && originalText) {
+          downloadBtn.innerHTML = `
+            <svg class="w-5 h-5 lg:w-6 lg:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            <span>${originalText}</span>
+          `;
+        }
+      }
+    } catch (error) {
+      console.error('Error downloading image:', error);
+      
+      // Restore button if there was an error
+      const downloadBtn = document.querySelector('[data-download-btn]');
+      if (downloadBtn) {
+        downloadBtn.innerHTML = `
+          <svg class="w-5 h-5 lg:w-6 lg:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+          </svg>
+          <span>Descargar Comprobante</span>
+        `;
+      }
+      
+      // Enhanced error message with mobile considerations
+      const isMobile = window.innerWidth < 768;
+      const errorMessage = isMobile 
+        ? 'Error al generar la imagen.\n\nPuedes:\n1. Tomar una captura de pantalla (botón encendido + volumen)\n2. Intentar descargar nuevamente\n3. Usar el navegador en modo escritorio'
+        : 'Error al generar la imagen.\n\nPuedes:\n1. Tomar una captura de pantalla de este comprobante\n2. Intentar descargar nuevamente\n3. Usar Ctrl+P para imprimir';
+      
+      alert(errorMessage);
+    }
+  };
+
   const deliveryInfo = getDeliveryInfo();
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
-      <div className="relative bg-gradient-to-br from-green-700/95 via-green-600/95 to-green-800/95 backdrop-blur-sm rounded-2xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden border border-white/20 max-h-[90vh] overflow-y-auto">
-        
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-white/80 hover:text-white transition-all duration-200 z-10 p-2 hover:bg-white/10 rounded-full"
+    <div className="fixed inset-0 z-50 overflow-hidden">
+      {/* Animated Green Background */}
+      <motion.div
+        className="absolute inset-0 bg-gradient-to-br from-green-600 via-green-700 to-green-800"
+        initial={{ 
+          clipPath: "circle(0% at 0% 100%)" 
+        }}
+        animate={{ 
+          clipPath: "circle(150% at 0% 100%)" 
+        }}
+        transition={{ 
+          duration: 1.2, 
+          ease: "easeInOut" 
+        }}
+      />
+      
+      {/* Hidden Ticket Element for Download - Responsive and properly positioned */}
+      <div className="fixed top-0 left-0 pointer-events-none opacity-0 z-[-1]">
+        <div 
+          ref={ticketRef}
+          data-ticket-clone
+          className="bg-gradient-to-br from-green-600 via-green-700 to-green-800 p-6 sm:p-8 rounded-2xl shadow-2xl mx-auto"
+          style={{ 
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+            width: 'clamp(320px, 90vw, 384px)', // Responsive width that adapts to screen
+            maxWidth: '384px',
+            minWidth: '320px'
+          }}
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-
-        {/* Background glow effect */}
-        <div className="absolute inset-0 bg-gradient-to-r from-green-400/20 to-green-300/10 rounded-2xl blur-xl scale-105 opacity-30"></div>
-        
-        {/* Content */}
-        <div className="relative p-6">
-          {/* Header */}
-          <div className="text-center mb-6">
-            {/* Success Icon */}
-            <div className="w-16 h-16 mx-auto mb-4 bg-white/20 rounded-full flex items-center justify-center">
-              <img 
-                src={assetUrl('/assets/check-circle.svg')} 
-                alt="Éxito" 
-                className="w-8 h-8 brightness-200" 
-                onError={handleImgError} 
-              />
-            </div>
-            
-            <h2 className="text-xl font-bold text-white mb-2">
-              ¡Orden Confirmada!
-            </h2>
-            <p className="text-white/90 text-sm">
-              Tu pedido ha sido registrado exitosamente
+          {/* Ticket Header */}
+          <div className="text-center mb-4 sm:mb-6 pb-3 sm:pb-4 border-b-2 border-white/30">
+            <h3 className="text-white font-bold text-xl sm:text-2xl mb-2">LA JUANITA</h3>
+            <p className="text-white/80 text-sm sm:text-base">Comprobante de Orden</p>
+            <p className="text-white/70 text-xs sm:text-sm mt-2">
+              {new Date().toLocaleDateString('es-MX')} - {new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
             </p>
           </div>
 
-          {/* Order Code - Highlighted */}
-          <div className="mb-6 p-4 bg-white/20 rounded-xl border-2 border-white/40 text-center">
-            <p className="text-white/80 text-xs mb-2 font-medium">CÓDIGO DE ORDEN</p>
-            <div className="bg-white/90 rounded-lg py-3 px-4 mb-3">
-              <p className="text-green-800 text-2xl font-bold tracking-widest">
+          {/* Order Code */}
+          <div className="mb-4 sm:mb-6 text-center">
+            <p className="text-white/80 text-sm sm:text-base mb-2">Código de Orden:</p>
+            <div className="bg-white/20 rounded-xl py-3 sm:py-4 px-4 sm:px-6 border border-white/30">
+              <p className="text-white font-bold text-2xl sm:text-3xl tracking-wider break-all">
                 {orderCode}
               </p>
             </div>
-            <p className="text-white/90 text-xs font-medium">
-              Te recomendamos tomar una captura de pantalla de este código para dar seguimiento a tu pedido.
-            </p>
           </div>
 
-          {/* Ticket */}
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-4 mb-6">
-            {/* Ticket Header */}
-            <div className="text-center mb-4 pb-3 border-b border-white/20">
-              <h3 className="text-white font-bold text-base mb-1">LA JUANITA</h3>
-              <p className="text-white/70 text-xs">Resumen de Orden</p>
-              <p className="text-white/60 text-xs mt-1">
-                {new Date().toLocaleDateString('es-MX')} - {new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
-              </p>
+          {/* Customer Info */}
+          <div className="space-y-2 sm:space-y-4 mb-4 sm:mb-6">
+            <div className="flex justify-between items-start py-2">
+              <span className="text-white/80 text-sm sm:text-base font-medium min-w-0 flex-shrink-0">Cliente:</span>
+              <span className="text-white text-sm sm:text-base font-semibold text-right break-words ml-2">
+                {orderData.customerInfo.name || 'Cliente registrado'}
+              </span>
             </div>
-
-            {/* Customer Info */}
-            <div className="space-y-2 mb-4">
-              <div className="flex justify-between items-center">
-                <span className="text-white/70 text-xs">Cliente:</span>
-                <span className="text-white text-xs font-medium">
-                  {orderData.customerInfo.name || 'Cliente registrado'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-white/70 text-xs">Teléfono:</span>
-                <span className="text-white text-xs font-medium">
-                  {orderData.customerInfo.phone}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-white/70 text-xs">Fecha:</span>
-                <span className="text-white text-xs font-medium">
-                  {orderData.customerInfo.date}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-white/70 text-xs">Hora:</span>
-                <span className="text-white text-xs font-medium">
-                  {formatDisplayTime(orderData.customerInfo.hour, orderData.customerInfo.minute)}
-                </span>
-              </div>
+            <div className="flex justify-between items-start py-2">
+              <span className="text-white/80 text-sm sm:text-base font-medium min-w-0 flex-shrink-0">Teléfono:</span>
+              <span className="text-white text-sm sm:text-base font-semibold text-right break-words ml-2">
+                {orderData.customerInfo.phone}
+              </span>
             </div>
+            <div className="flex justify-between items-start py-2">
+              <span className="text-white/80 text-sm sm:text-base font-medium min-w-0 flex-shrink-0">Fecha:</span>
+              <span className="text-white text-sm sm:text-base font-semibold text-right break-words ml-2">
+                {orderData.customerInfo.date}
+              </span>
+            </div>
+            <div className="flex justify-between items-start py-2">
+              <span className="text-white/80 text-sm sm:text-base font-medium min-w-0 flex-shrink-0">Hora:</span>
+              <span className="text-white text-sm sm:text-base font-semibold text-right break-words ml-2">
+                {formatDisplayTime(orderData.customerInfo.hour, orderData.customerInfo.minute)}
+              </span>
+            </div>
+          </div>
 
-            {/* Delivery Info */}
-            <div className="mb-4 pb-3 border-b border-white/20">
-              <div className="flex justify-between items-start">
-                <span className="text-white/70 text-xs">Entrega:</span>
-                <div className="text-right flex-1 ml-2">
-                  <p className="text-white text-xs font-medium">{deliveryInfo.type}</p>
-                  <p className="text-white/60 text-xs mt-0.5 break-words">{deliveryInfo.address}</p>
+          {/* Delivery Info */}
+          <div className="mb-4 sm:mb-6 pb-3 sm:pb-4 border-b-2 border-white/30">
+            <div className="space-y-2">
+              <div className="flex justify-between items-start py-2">
+                <span className="text-white/80 text-sm sm:text-base font-medium min-w-0 flex-shrink-0">Entrega:</span>
+                <div className="text-right flex-1 ml-2 sm:ml-4 min-w-0">
+                  <p className="text-white text-sm sm:text-base font-semibold break-words">{getDeliveryInfo().type}</p>
+                  <p className="text-white/70 text-xs sm:text-sm mt-1 break-words">
+                    {getDeliveryInfo().address}
+                  </p>
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* Items Detail - New Section */}
-            <div className="mb-4 pb-3 border-b border-white/20">
-              <h4 className="text-white font-semibold text-xs mb-3 border-b border-white/20 pb-1">
-                Artículos del Pedido
-              </h4>
-              <div className="space-y-2">
-                {orderData.items.map((item, index) => (
-                  <div key={item.id || index} className="flex justify-between items-start text-xs">
-                    <div className="flex-1">
-                      <p className="text-white/90 leading-tight">
-                        {item.quantity}x {item.title}
-                      </p>
-                      <p className="text-white/60 text-[10px]">
-                        ${item.price} c/u
-                      </p>
-                    </div>
-                    <span className="text-white font-medium ml-2">
-                      ${item.price * item.quantity}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Order Summary */}
-            <div className="space-y-2 mb-4">
-              <h4 className="text-white font-semibold text-xs border-b border-white/20 pb-1">
-                Resumen del Pedido
-              </h4>
-              <div className="flex justify-between items-center">
-                <span className="text-white/80 text-xs">
-                  {orderData.items.length} artículo{orderData.items.length !== 1 ? 's' : ''}
-                </span>
-                <span className="text-white font-semibold text-sm">
-                  ${orderData.originalTotal || orderData.totalPrice} MXN
-                </span>
-              </div>
-              
-              {/* Show discount if available */}
-              {orderData.hasPromotions && orderData.discountPercentage > 0 && (
-                <div className="flex justify-between items-center text-green-300">
-                  <span className="text-xs">
-                    Descuento ({orderData.discountPercentage}%)
-                  </span>
-                  <span className="text-sm font-semibold">
-                    -${(orderData.originalTotal - orderData.totalPrice).toFixed(0)} MXN
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Total */}
-            <div className="border-t border-white/20 pt-3">
-              <div className="flex justify-between items-center">
-                <span className="text-white font-bold text-sm">TOTAL:</span>
-                <span className="text-white font-bold text-lg">
+          {/* Total Amount */}
+          <div className="border-t-2 border-white/30 pt-4 sm:pt-6 mb-4 sm:mb-6">
+            <div className="bg-white/10 rounded-xl p-3 sm:p-4 border border-white/20">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-white font-bold text-base sm:text-lg min-w-0 flex-shrink-0">TOTAL PAGADO:</span>
+                <span className="text-white font-bold text-xl sm:text-2xl break-words ml-2">
                   ${orderData.totalPrice} MXN
                 </span>
               </div>
               {orderData.hasPromotions && (
-                <p className="text-green-300/90 text-xs font-medium">
-                  ¡Promoción aplicada!
-                </p>
+                <div className="text-center mt-3 pt-3 border-t border-white/20">
+                  <p className="text-green-300 text-sm sm:text-base font-semibold">
+                    ¡Promoción aplicada!
+                  </p>
+                  <p className="text-green-200 text-xs sm:text-sm">
+                    Ahorro: ${(orderData.originalTotal - orderData.totalPrice).toFixed(0)} MXN
+                  </p>
+                </div>
               )}
             </div>
           </div>
 
-          {/* Status Indicator */}
-          <div className="text-center mb-6">
-            <p className="text-white/90 text-sm mb-3">Estado del pedido</p>
-            <div className="flex justify-center space-x-2">
-              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-              <div className="w-2 h-2 bg-white/80 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
-              <div className="w-2 h-2 bg-white rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
-            </div>
+          {/* Instructions */}
+          <div className="text-center pt-3 sm:pt-4 border-t-2 border-white/30">
+            <p className="text-white/90 text-sm sm:text-base leading-relaxed break-words">
+              Presenta este comprobante al momento de {orderData.deliveryType === 'pickup' ? 'recoger' : 'recibir'} tu pedido
+            </p>
           </div>
-          
-          {/* Continue Button */}
+
+          {/* Footer */}
+          <div className="text-center mt-4 sm:mt-6 pt-3 sm:pt-4 border-t border-white/20">
+            <p className="text-white/60 text-xs sm:text-sm">
+              Gracias por tu preferencia
+            </p>
+            <p className="text-white/60 text-xs mt-1">
+              La Juanita - Montemorelos, NL
+            </p>
+          </div>
+        </div>
+      </div>
+      
+      {/* Content Container - Responsive */}
+      <div className="relative z-10 flex items-center justify-center min-h-screen p-4 lg:p-8">
+        {/* Modal Content - Mobile: Full width with scroll, Desktop: Constrained */}
+        <motion.div 
+          className="relative w-full max-w-sm lg:max-w-2xl xl:max-w-3xl max-h-[95vh] lg:max-h-none overflow-hidden"
+          initial={{ opacity: 0, scale: 0.8, y: 50 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ 
+            delay: 0.6,
+            duration: 0.6, 
+            ease: "easeOut" 
+          }}
+        >
+          {/* Close button - Responsive positioning */}
           <button
             onClick={onClose}
-            className="w-full bg-white text-green-700 font-bold py-3 px-6 rounded-xl hover:bg-gray-100 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 text-sm"
+            className="absolute top-4 right-4 text-white/80 hover:text-white transition-all duration-200 z-20 p-2 hover:bg-white/10 rounded-full lg:hidden"
           >
-            Continuar Navegando
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
+
+          {/* Background glow effect */}
+          <div className="absolute inset-0 bg-gradient-to-r from-green-400/20 to-green-300/10 rounded-2xl lg:rounded-3xl blur-xl scale-105 opacity-30"></div>
           
-          {/* Bottom accent */}
-          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-16 h-1 bg-gradient-to-r from-white/60 to-white/40 rounded-full"></div>
-        </div>
+          {/* Content - Responsive padding and layout with scroll */}
+          <div className="relative bg-white/10 backdrop-blur-sm rounded-2xl lg:rounded-3xl shadow-2xl border border-white/20 max-h-[95vh] lg:max-h-none overflow-y-auto lg:overflow-visible">
+            
+            {/* Mobile Layout - Scrollable */}
+            <div className="lg:hidden p-6">
+              {/* Header */}
+              <div className="text-center mb-6">
+                {/* Success Icon */}
+                <motion.div 
+                  className="w-16 h-16 mx-auto mb-4 bg-white/20 rounded-full flex items-center justify-center"
+                  initial={{ scale: 0, rotate: -180 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ 
+                    delay: 1.0,
+                    duration: 0.6,
+                    type: "spring",
+                    stiffness: 200
+                  }}
+                >
+                  <img 
+                    src={assetUrl('/assets/check-circle.svg')} 
+                    alt="Éxito" 
+                    className="w-8 h-8 brightness-200" 
+                    onError={handleImgError} 
+                  />
+                </motion.div>
+                
+                <motion.h2 
+                  className="text-xl font-bold text-white mb-2"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 1.2, duration: 0.5 }}
+                >
+                  ¡Gracias por tu pedido!
+                </motion.h2>
+                <motion.p 
+                  className="text-white/90 text-sm"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 1.4, duration: 0.5 }}
+                >
+                  Hemos recibido tu orden exitosamente. Te esperamos pronto en La Juanita
+                </motion.p>
+              </div>
+
+              {/* Essential Info Ticket - Visual display only */}
+              <motion.div 
+                className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-4 mb-6"
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 1.6, duration: 0.5 }}
+              >
+                {/* Ticket Header */}
+                <div className="text-center mb-4 pb-3 border-b border-white/20">
+                  <h3 className="text-white font-bold text-base mb-1">LA JUANITA</h3>
+                  <p className="text-white/70 text-xs">Comprobante de Orden</p>
+                  <p className="text-white/60 text-xs mt-1">
+                    {new Date().toLocaleDateString('es-MX')} - {new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+
+                {/* Order Code in ticket */}
+                <div className="mb-4 text-center">
+                  <p className="text-white/70 text-xs mb-1">Código de Orden:</p>
+                  <p className="text-white font-bold text-lg tracking-wider bg-white/20 rounded py-2">
+                    {orderCode}
+                  </p>
+                </div>
+
+                {/* Customer & Delivery Info */}
+                <div className="space-y-2 mb-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-white/70 text-xs">Cliente:</span>
+                    <span className="text-white text-xs font-medium">
+                      {orderData.customerInfo.name || 'Cliente registrado'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-white/70 text-xs">Teléfono:</span>
+                    <span className="text-white text-xs font-medium">
+                      {orderData.customerInfo.phone}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-white/70 text-xs">Fecha:</span>
+                    <span className="text-white text-xs font-medium">
+                      {orderData.customerInfo.date}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-white/70 text-xs">Hora:</span>
+                    <span className="text-white text-xs font-medium">
+                      {formatDisplayTime(orderData.customerInfo.hour, orderData.customerInfo.minute)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Delivery Info */}
+                <div className="mb-4 pb-3 border-b border-white/20">
+                  <div className="flex justify-between items-start">
+                    <span className="text-white/70 text-xs">Entrega:</span>
+                    <div className="text-right flex-1 ml-2">
+                      <p className="text-white text-xs font-medium">{getDeliveryInfo().type}</p>
+                      <p className="text-white/60 text-xs mt-0.5 break-words">{getDeliveryInfo().address}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Total Amount */}
+                <div className="border-t border-white/20 pt-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-white font-bold text-sm">TOTAL PAGADO:</span>
+                    <span className="text-white font-bold text-lg">
+                      ${orderData.totalPrice} MXN
+                    </span>
+                  </div>
+                  {orderData.hasPromotions && (
+                    <p className="text-green-300/90 text-sm font-medium mt-1">
+                      ¡Promoción aplicada! Ahorro: ${(orderData.originalTotal - orderData.totalPrice).toFixed(0)} MXN
+                    </p>
+                  )}
+                </div>
+
+                {/* Instructions */}
+                <div className="mt-4 pt-3 border-t border-white/20">
+                  <p className="text-white/80 text-xs text-center">
+                    Presenta este comprobante al momento de {orderData.deliveryType === 'pickup' ? 'recoger' : 'recibir'} tu pedido
+                  </p>
+                </div>
+              </motion.div>
+
+              {/* Status Indicator */}
+              <motion.div 
+                className="text-center mb-6"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1.8, duration: 0.5 }}
+              >
+                <p className="text-white/90 text-sm mb-3">Estado del pedido</p>
+                <div className="flex justify-center space-x-2">
+                  <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                  <div className="w-2 h-2 bg-white/80 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                  <div className="w-2 h-2 bg-white rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+                </div>
+              </motion.div>
+              
+              {/* Mobile: No action buttons - only close button (X) available */}
+            </div>
+
+            {/* Desktop Layout */}
+            <div className="hidden lg:block p-10">
+              <div className="grid grid-cols-2 gap-12 items-start">
+                
+                {/* Left Column - Header and Status */}
+                <div>
+                  {/* Header */}
+                  <div className="text-center mb-8">
+                    {/* Success Icon */}
+                    <motion.div 
+                      className="w-24 h-24 mx-auto mb-6 bg-white/20 rounded-full flex items-center justify-center"
+                      initial={{ scale: 0, rotate: -180 }}
+                      animate={{ scale: 1, rotate: 0 }}
+                      transition={{ 
+                        delay: 1.0,
+                        duration: 0.6,
+                        type: "spring",
+                        stiffness: 200
+                      }}
+                    >
+                      <img 
+                        src={assetUrl('/assets/check-circle.svg')} 
+                        alt="Éxito" 
+                        className="w-12 h-12 brightness-200" 
+                        onError={handleImgError} 
+                      />
+                    </motion.div>
+                    
+                    <motion.h2 
+                      className="text-3xl font-bold text-white mb-4"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 1.2, duration: 0.5 }}
+                    >
+                      ¡Gracias por tu pedido!
+                    </motion.h2>
+                    <motion.p 
+                      className="text-white/90 text-lg"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 1.4, duration: 0.5 }}
+                    >
+                      Hemos recibido tu orden exitosamente. Te esperamos pronto en La Juanita
+                    </motion.p>
+                  </div>
+
+                  {/* Status Indicator */}
+                  <motion.div 
+                    className="text-center mb-8"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 1.8, duration: 0.5 }}
+                  >
+                    <p className="text-white/90 text-lg mb-4">Estado del pedido</p>
+                    <div className="flex justify-center space-x-3">
+                      <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
+                      <div className="w-3 h-3 bg-white/80 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                      <div className="w-3 h-3 bg-white rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+                    </div>
+                  </motion.div>
+
+                  {/* Action Buttons */}
+                  <motion.div 
+                    className="space-y-4"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 2.0, duration: 0.5 }}
+                  >
+                    {/* Download Button */}
+                    <button
+                      onClick={downloadAsImage}
+                      data-download-btn
+                      className="w-full bg-white/20 text-white font-bold py-4 px-8 rounded-xl hover:bg-white/30 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 text-base flex items-center justify-center space-x-3 border border-white/30"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <span>Descargar Comprobante</span>
+                    </button>
+
+                    {/* Continue Button */}
+                    <button
+                      onClick={onClose}
+                      className="w-full bg-white text-green-700 font-bold py-4 px-8 rounded-xl hover:bg-gray-100 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 text-base"
+                    >
+                      Continuar Navegando
+                    </button>
+                  </motion.div>
+                </div>
+
+                {/* Right Column - Visual Ticket Display */}
+                <motion.div 
+                  className="bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 p-8"
+                  initial={{ opacity: 0, x: 50 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 1.6, duration: 0.5 }}
+                >
+                  {/* Desktop ticket display content */}
+                  <div className="text-center mb-6 pb-4 border-b border-white/20">
+                    <h3 className="text-white font-bold text-xl mb-2">LA JUANITA</h3>
+                    <p className="text-white/70 text-sm">Comprobante de Orden</p>
+                    <p className="text-white/60 text-sm mt-1">
+                      {new Date().toLocaleDateString('es-MX')} - {new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+
+                  <div className="mb-6 text-center">
+                    <p className="text-white/70 text-sm mb-2">Código de Orden:</p>
+                    <p className="text-white font-bold text-2xl tracking-wider bg-white/20 rounded py-3">
+                      {orderCode}
+                    </p>
+                  </div>
+
+                  <div className="space-y-3 mb-6">
+                    <div className="flex justify-between items-center">
+                      <span className="text-white/70 text-sm">Cliente:</span>
+                      <span className="text-white text-sm font-medium">
+                        {orderData.customerInfo.name || 'Cliente registrado'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-white/70 text-sm">Teléfono:</span>
+                      <span className="text-white text-sm font-medium">
+                        {orderData.customerInfo.phone}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-white/70 text-sm">Fecha:</span>
+                      <span className="text-white text-sm font-medium">
+                        {orderData.customerInfo.date}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-white/70 text-sm">Hora:</span>
+                      <span className="text-white text-sm font-medium">
+                        {formatDisplayTime(orderData.customerInfo.hour, orderData.customerInfo.minute)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mb-6 pb-4 border-b border-white/20">
+                    <div className="flex justify-between items-start">
+                      <span className="text-white/70 text-sm">Entrega:</span>
+                      <div className="text-right flex-1 ml-3">
+                        <p className="text-white text-sm font-medium">{getDeliveryInfo().type}</p>
+                        <p className="text-white/60 text-sm mt-1 break-words">{getDeliveryInfo().address}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-white/20 pt-4">
+                    <div className="flex justify-between items-center">
+                      <span className="text-white font-bold text-base">TOTAL PAGADO:</span>
+                      <span className="text-white font-bold text-xl">
+                        ${orderData.totalPrice} MXN
+                      </span>
+                    </div>
+                    {orderData.hasPromotions && (
+                      <p className="text-green-300/90 text-sm font-medium mt-2">
+                        ¡Promoción aplicada! Ahorro: ${(orderData.originalTotal - orderData.totalPrice).toFixed(0)} MXN
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="mt-6 pt-4 border-t border-white/20">
+                    <p className="text-white/80 text-sm text-center">
+                      Presenta este comprobante al momento de {orderData.deliveryType === 'pickup' ? 'recoger' : 'recibir'} tu pedido
+                    </p>
+                  </div>
+                </motion.div>
+              </div>
+            </div>
+            
+            {/* Bottom accent */}
+            <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-16 h-1 bg-gradient-to-r from-white/60 to-white/40 rounded-full"></div>
+          </div>
+        </motion.div>
       </div>
     </div>
   );
