@@ -1,17 +1,17 @@
 {
   "files": {
-    "main.css": "/La-juanita-website/static/css/main.92420745.css",
-    "main.js": "/La-juanita-website/static/js/main.3dd54dd6.js",
+    "main.css": "/La-juanita-website/static/css/main.802b4e89.css",
+    "main.js": "/La-juanita-website/static/js/main.777cdc4a.js",
     "static/js/239.7c3e3c37.chunk.js": "/La-juanita-website/static/js/239.7c3e3c37.chunk.js",
     "static/js/453.d7446e4a.chunk.js": "/La-juanita-website/static/js/453.d7446e4a.chunk.js",
     "index.html": "/La-juanita-website/index.html",
-    "main.92420745.css.map": "/La-juanita-website/static/css/main.92420745.css.map",
-    "main.3dd54dd6.js.map": "/La-juanita-website/static/js/main.3dd54dd6.js.map",
+    "main.802b4e89.css.map": "/La-juanita-website/static/css/main.802b4e89.css.map",
+    "main.777cdc4a.js.map": "/La-juanita-website/static/js/main.777cdc4a.js.map",
     "239.7c3e3c37.chunk.js.map": "/La-juanita-website/static/js/239.7c3e3c37.chunk.js.map",
     "453.d7446e4a.chunk.js.map": "/La-juanita-website/static/js/453.d7446e4a.chunk.js.map"
   },
   "entrypoints": [
-    "static/css/main.92420745.css",
-    "static/js/main.3dd54dd6.js"
+    "static/css/main.802b4e89.css",
+    "static/js/main.777cdc4a.js"
   ]
 }
