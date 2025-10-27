@@ -6,23 +6,14 @@ const SelectorClock = ({ onTimeChange, selectedHour, selectedMinute }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   // Business hours configuration
-  const BUSINESS_START_HOUR = 12; // 9 PM
-  const BUSINESS_END_HOUR = 15;   // 12 AM (midnight)
+  const BUSINESS_START_HOUR = 12; // 12 PM
+  const BUSINESS_END_HOUR = 15;   // 3 PM
 
   useEffect(() => {
     generateTimeOptions();
   }, []);
 
-  useEffect(() => {
-    // Set first available time as default if no time is selected
-    if (timeOptions.length > 0 && !selectedHour && !selectedMinute) {
-      const availableOptions = timeOptions.filter(option => option.available);
-      if (availableOptions.length > 0) {
-        const firstAvailable = availableOptions[0];
-        onTimeChange(firstAvailable.hour.toString(), firstAvailable.minute.toString());
-      }
-    }
-  }, [timeOptions, selectedHour, selectedMinute, onTimeChange]);
+  // Eliminada la selección automática de la primera hora disponible. El usuario debe seleccionar manualmente.
 
   const generateTimeOptions = () => {
     const options = [];
@@ -30,32 +21,36 @@ const SelectorClock = ({ onTimeChange, selectedHour, selectedMinute }) => {
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
 
-    // Generate all possible time slots (21:00 to 24:00 in 15-minute intervals)
-    for (let hour = BUSINESS_START_HOUR; hour <= BUSINESS_END_HOUR; hour++) {
-      const minutes = hour === BUSINESS_END_HOUR ? [0] : [0, 15, 30, 45]; // Only 24:00 for end hour
-      
-      minutes.forEach(minute => {
-        const timeSlotHour = hour === 24 ? 0 : hour; // Convert 24 to 0 for display
-        const timeSlotMinute = minute;
-        
-        // Check if this time slot is available (not in the past)
-        // Special handling for midnight crossing
-        const isAvailable = hour === 24 ? 
-          (currentHour < 1 || currentHour >= 21) : // Available if current time is before 1 AM or after 9 PM
-          (hour > currentHour) || (hour === currentHour && minute > currentMinute);
+    // Determinar lógica de visibilidad y disponibilidad
+    // Entre 12:00 y 15:00, solo mostrar horarios futuros
+    // Fuera de ese horario, mostrar todos los horarios
+    let showAllSlots = false;
+    if (currentHour >= 12 && currentHour < 15) {
+      showAllSlots = false;
+    } else {
+      showAllSlots = true;
+    }
 
-        const displayTime = formatDisplayTime(timeSlotHour, timeSlotMinute);
-        
+    for (let hour = BUSINESS_START_HOUR; hour <= BUSINESS_END_HOUR; hour++) {
+      const minutes = hour === BUSINESS_END_HOUR ? [0] : [0, 15, 30, 45];
+      minutes.forEach(minute => {
+        let isAvailable = true;
+        if (!showAllSlots) {
+          // Solo mostrar horarios futuros
+          if (hour < currentHour || (hour === currentHour && minute <= currentMinute)) {
+            isAvailable = false;
+          }
+        }
+        const displayTime = formatDisplayTime(hour, minute);
         options.push({
-          hour: timeSlotHour,
-          minute: timeSlotMinute,
+          hour,
+          minute,
           display: displayTime,
           available: isAvailable,
-          value: `${timeSlotHour}:${timeSlotMinute.toString().padStart(2, '0')}`
+          value: `${hour}:${minute.toString().padStart(2, '0')}`
         });
       });
     }
-
     setTimeOptions(options);
   };
 
@@ -73,7 +68,7 @@ const SelectorClock = ({ onTimeChange, selectedHour, selectedMinute }) => {
   };
 
   const getCurrentSelection = () => {
-    if (!selectedHour || !selectedMinute) return 'Seleccionar hora';
+  if (!selectedHour || !selectedMinute) return 'Seleccionar hora de entrega';
     
     const hour = parseInt(selectedHour, 10);
     const minute = parseInt(selectedMinute, 10);

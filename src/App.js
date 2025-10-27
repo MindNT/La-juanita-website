@@ -22,6 +22,7 @@ function App() {
   const [showLoader, setShowLoader] = useState(false);
   const [loaderProgress, setLoaderProgress] = useState(0);
   const [orderCode, setOrderCode] = useState('');
+  const [menuReloadFlag, setMenuReloadFlag] = useState(false);
 
   const API_URL = "https://lajuanita.mindnt.com.mx";
   //const API_URL = "http://localhost:5010"; // tu base URL del backend
@@ -38,15 +39,43 @@ function App() {
     setShowBillingModal(false);
     // Force a complete reset - this ensures everything returns to initial state
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Trigger reload of menu items
+    setMenuReloadFlag(flag => !flag);
   };
   
   const handleStartProcessing = async (orderData, onComplete) => {
     setShowLoader(true);
     setLoaderProgress(0);
 
-    // Generate order code at the start of processing
-    const generatedOrderCode = Math.random().toString(36).substring(2, 10).toUpperCase();
+    // Obtener el último id de venta y sumar 1 para el nuevo código de orden
+    let generatedOrderCode = '';
+    try {
+      const response = await fetch(`${API_URL}/orders/get-last-sale`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      if (response.ok) {
+        const result = await response.json();
+        if (result.status === 'success' && typeof result.data === 'number') {
+          generatedOrderCode = (result.data + 1).toString();
+        } else {
+          // Fallback: si la respuesta no es válida, usar 1
+          generatedOrderCode = '1';
+        }
+      } else {
+        // Fallback: si la petición falla, usar 1
+        generatedOrderCode = '1';
+      }
+    } catch (err) {
+      // Fallback: si hay error, usar 1
+      generatedOrderCode = '1';
+    }
     setOrderCode(generatedOrderCode);
+    // Código anterior (letras y números aleatorios)
+    // const generatedOrderCode = Math.random().toString(36).substring(2, 10).toUpperCase();
+    // setOrderCode(generatedOrderCode);
 
     try {
       const progressInterval = setInterval(() => {
@@ -65,13 +94,20 @@ function App() {
       }
 
       // Prepare order data for saving with promotions and discounted price
+      // Compose delivery_datetime from selected date and hour/minute
+      const deliveryDate = orderData.customerInfo.date;
+      const deliveryHour = orderData.customerInfo.hour?.toString().padStart(2, '0') || '00';
+      const deliveryMinute = orderData.customerInfo.minute?.toString().padStart(2, '0') || '00';
+      const delivery_datetime = `${deliveryDate} ${deliveryHour}:${deliveryMinute}`;
+
       const saveData = {
         phone: orderData.customerInfo.phone,
         items: {},
         total_amount: parseFloat(orderData.totalPrice), // Use the discounted totalPrice from orderData
         maps_url: '',
         promotions: orderData.promotions || {}, // Use promotions from orderData (dict_combos_apply)
-        code_order: generatedOrderCode
+        code_order: generatedOrderCode,
+        delivery_datetime
       };
 
       // Convert cart items to the required format
@@ -146,7 +182,10 @@ function App() {
       params.append('maps_url', orderData.maps_url || '');
       params.append('promotions', JSON.stringify(orderData.promotions));
       params.append('code_order', orderData.code_order);  // Add the order code parameter
-      
+      if (orderData.delivery_datetime) {
+        params.append('delivery_datetime', orderData.delivery_datetime);
+      }
+
       const response = await fetch(`${API_URL}/orders/save-order?${params.toString()}`, {
         method: 'POST',
         headers: {
@@ -257,7 +296,7 @@ function App() {
             <TopSection />
           </div>*/}
           <div id="menu">
-            <MenuSection />
+            <MenuSection reloadFlag={menuReloadFlag} />
           </div>
           {/*<ComboSection />*/}
           {/*<div id="opiniones">

@@ -3,7 +3,8 @@ import { motion } from 'motion/react';
 import { assetUrl, handleImgError } from '../utils/imageHelpers';
 
 const ModalSuccess = ({ isOpen, onClose, orderData, orderCode }) => {
-  const ticketRef = useRef(null);
+  const modalRef = useRef(null);
+  const ticketVisualRef = useRef(null);
   
   if (!isOpen || !orderData) return null;
 
@@ -48,8 +49,9 @@ const ModalSuccess = ({ isOpen, onClose, orderData, orderCode }) => {
         return;
       }
       
-      // Use the same ticketRef for both mobile and desktop
-      const targetElement = ticketRef.current;
+  // En PC, capturar solo el ticket visual
+  const isMobile = window.innerWidth < 768;
+  const targetElement = isMobile ? document.body : ticketVisualRef.current;
       
       if (targetElement && html2canvas) {
         // Show loading state
@@ -95,23 +97,7 @@ const ModalSuccess = ({ isOpen, onClose, orderData, orderCode }) => {
             pixelRatio: window.devicePixelRatio || 1,
             onclone: (clonedDoc, element) => {
               // Ensure proper styling in the cloned element
-              const clonedTicket = clonedDoc.querySelector('[data-ticket-clone]');
-              if (clonedTicket) {
-                // Force proper dimensions
-                clonedTicket.style.width = ticketWidth + 'px';
-                clonedTicket.style.maxWidth = ticketWidth + 'px';
-                clonedTicket.style.transform = 'none';
-                clonedTicket.style.transition = 'none';
-                clonedTicket.style.position = 'static';
-                clonedTicket.style.overflow = 'visible';
-                
-                // Ensure text doesn't overflow
-                const textElements = clonedTicket.querySelectorAll('p, span, div');
-                textElements.forEach(el => {
-                  el.style.wordBreak = 'break-word';
-                  el.style.overflowWrap = 'break-word';
-                });
-              }
+              // Si necesitas manipular el DOM clonado, hazlo aquí
             }
           })
         };
@@ -191,8 +177,21 @@ const ModalSuccess = ({ isOpen, onClose, orderData, orderCode }) => {
 
   const deliveryInfo = getDeliveryInfo();
 
+  // Helper para mostrar la fecha y hora de entrega
+  const formatDeliveryDatetime = (deliveryDatetime) => {
+    if (!deliveryDatetime) return '';
+    // Espera formato 'YYYY-MM-DD HH:mm'
+    const [date, time] = deliveryDatetime.split(' ');
+    const [year, month, day] = date.split('-');
+    const [hour, minute] = time.split(':');
+    // Formato bonito: DD/MM/YYYY HH:mm AM/PM
+    const ampm = parseInt(hour, 10) >= 12 ? 'PM' : 'AM';
+    const displayHour = parseInt(hour, 10) > 12 ? parseInt(hour, 10) - 12 : parseInt(hour, 10) === 0 ? 12 : parseInt(hour, 10);
+    return `${day}/${month}/${year} ${displayHour}:${minute} ${ampm}`;
+  };
+
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden">
+  <div className="fixed inset-0 z-50 overflow-hidden" ref={modalRef}>
       {/* Animated Green Background */}
       <motion.div
         className="absolute inset-0 bg-gradient-to-br from-green-600 via-green-700 to-green-800"
@@ -208,121 +207,7 @@ const ModalSuccess = ({ isOpen, onClose, orderData, orderCode }) => {
         }}
       />
       
-      {/* Hidden Ticket Element for Download - Responsive and properly positioned */}
-      <div className="fixed top-0 left-0 pointer-events-none opacity-0 z-[-1]">
-        <div 
-          ref={ticketRef}
-          data-ticket-clone
-          className="bg-gradient-to-br from-green-600 via-green-700 to-green-800 p-6 sm:p-8 rounded-2xl shadow-2xl mx-auto"
-          style={{ 
-            fontFamily: 'system-ui, -apple-system, sans-serif',
-            width: 'clamp(320px, 90vw, 384px)', // Responsive width that adapts to screen
-            maxWidth: '384px',
-            minWidth: '320px'
-          }}
-        >
-          {/* Ticket Header */}
-          <div className="text-center mb-4 sm:mb-6 pb-3 sm:pb-4 border-b-2 border-white/30">
-            <h3 className="text-white font-bold text-xl sm:text-2xl mb-2">LA JUANITA</h3>
-            <p className="text-white/80 text-sm sm:text-base">Comprobante de Orden</p>
-            <p className="text-white/70 text-xs sm:text-sm mt-2">
-              {new Date().toLocaleDateString('es-MX')} - {new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
-            </p>
-          </div>
-
-          {/* Order Code */}
-          <div className="mb-4 sm:mb-6 text-center">
-            <p className="text-white/80 text-sm sm:text-base mb-2">Código de Orden:</p>
-            <div className="bg-white/20 rounded-xl py-3 sm:py-4 px-4 sm:px-6 border border-white/30">
-              <p className="text-white font-bold text-2xl sm:text-3xl tracking-wider break-all">
-                {orderCode}
-              </p>
-            </div>
-          </div>
-
-          {/* Customer Info */}
-          <div className="space-y-2 sm:space-y-4 mb-4 sm:mb-6">
-            <div className="flex justify-between items-start py-2">
-              <span className="text-white/80 text-sm sm:text-base font-medium min-w-0 flex-shrink-0">Cliente:</span>
-              <span className="text-white text-sm sm:text-base font-semibold text-right break-words ml-2">
-                {orderData.customerInfo.name || 'Cliente registrado'}
-              </span>
-            </div>
-            <div className="flex justify-between items-start py-2">
-              <span className="text-white/80 text-sm sm:text-base font-medium min-w-0 flex-shrink-0">Teléfono:</span>
-              <span className="text-white text-sm sm:text-base font-semibold text-right break-words ml-2">
-                {orderData.customerInfo.phone}
-              </span>
-            </div>
-            <div className="flex justify-between items-start py-2">
-              <span className="text-white/80 text-sm sm:text-base font-medium min-w-0 flex-shrink-0">Fecha:</span>
-              <span className="text-white text-sm sm:text-base font-semibold text-right break-words ml-2">
-                {orderData.customerInfo.date}
-              </span>
-            </div>
-            <div className="flex justify-between items-start py-2">
-              <span className="text-white/80 text-sm sm:text-base font-medium min-w-0 flex-shrink-0">Hora:</span>
-              <span className="text-white text-sm sm:text-base font-semibold text-right break-words ml-2">
-                {formatDisplayTime(orderData.customerInfo.hour, orderData.customerInfo.minute)}
-              </span>
-            </div>
-          </div>
-
-          {/* Delivery Info */}
-          <div className="mb-4 sm:mb-6 pb-3 sm:pb-4 border-b-2 border-white/30">
-            <div className="space-y-2">
-              <div className="flex justify-between items-start py-2">
-                <span className="text-white/80 text-sm sm:text-base font-medium min-w-0 flex-shrink-0">Entrega:</span>
-                <div className="text-right flex-1 ml-2 sm:ml-4 min-w-0">
-                  <p className="text-white text-sm sm:text-base font-semibold break-words">{getDeliveryInfo().type}</p>
-                  <p className="text-white/70 text-xs sm:text-sm mt-1 break-words">
-                    {getDeliveryInfo().address}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Total Amount */}
-          <div className="border-t-2 border-white/30 pt-4 sm:pt-6 mb-4 sm:mb-6">
-            <div className="bg-white/10 rounded-xl p-3 sm:p-4 border border-white/20">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-white font-bold text-base sm:text-lg min-w-0 flex-shrink-0">TOTAL PAGADO:</span>
-                <span className="text-white font-bold text-xl sm:text-2xl break-words ml-2">
-                  ${orderData.totalPrice} MXN
-                </span>
-              </div>
-              {orderData.hasPromotions && (
-                <div className="text-center mt-3 pt-3 border-t border-white/20">
-                  <p className="text-green-300 text-sm sm:text-base font-semibold">
-                    ¡Promoción aplicada!
-                  </p>
-                  <p className="text-green-200 text-xs sm:text-sm">
-                    Ahorro: ${(orderData.originalTotal - orderData.totalPrice).toFixed(0)} MXN
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Instructions */}
-          <div className="text-center pt-3 sm:pt-4 border-t-2 border-white/30">
-            <p className="text-white/90 text-sm sm:text-base leading-relaxed break-words">
-              Presenta este comprobante al momento de {orderData.deliveryType === 'pickup' ? 'recoger' : 'recibir'} tu pedido
-            </p>
-          </div>
-
-          {/* Footer */}
-          <div className="text-center mt-4 sm:mt-6 pt-3 sm:pt-4 border-t border-white/20">
-            <p className="text-white/60 text-xs sm:text-sm">
-              Gracias por tu preferencia
-            </p>
-            <p className="text-white/60 text-xs mt-1">
-              La Juanita - Montemorelos, NL
-            </p>
-          </div>
-        </div>
-      </div>
+      {/* Eliminado ticketRef y el bloque oculto del ticket para evitar error y duplicidad */}
       
       {/* Content Container - Responsive */}
       <div className="relative z-10 flex items-center justify-center min-h-screen p-4 lg:p-8">
@@ -595,6 +480,7 @@ const ModalSuccess = ({ isOpen, onClose, orderData, orderCode }) => {
                   initial={{ opacity: 0, x: 50 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 1.6, duration: 0.5 }}
+                  ref={ticketVisualRef}
                 >
                   {/* Desktop ticket display content */}
                   <div className="text-center mb-6 pb-4 border-b border-white/20">

@@ -10,7 +10,7 @@ const API_URL = "https://lajuanita.mindnt.com.mx";
 //const API_URL = "http://localhost:5010"; // tu base URL del backend
 
 
-const MenuSection = () => {
+const MenuSection = ({ reloadFlag }) => {
   const [categories, setCategories] = useState([]);
   const [activeCategory, setActiveCategory] = useState(null);
   const [products, setProducts] = useState([]); // 🔹 productos del día
@@ -90,7 +90,7 @@ const MenuSection = () => {
       }
     };
     fetchProducts();
-  }, []);
+  }, [reloadFlag]);
 
   // 🔹 4. Agregar producto al carrito
   const handleAddClick = (product) => addItem(product);

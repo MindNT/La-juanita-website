@@ -27,6 +27,48 @@ const ModalBilling = ({ isOpen, onClose, onStartProcessing, orderCode }) => {
     hour: '',
     minute: ''
   });
+
+  // Helper para obtener la fecha de mañana en formato yyyy-mm-dd
+  const getTomorrowDateString = () => {
+  const now = new Date();
+  // Sumar un día localmente, evitando desfase por zona horaria
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  // Formatear como yyyy-mm-dd
+  const yyyy = tomorrow.getFullYear();
+  const mm = String(tomorrow.getMonth() + 1).padStart(2, '0');
+  const dd = String(tomorrow.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+  };
+
+  // Helper para obtener la fecha de hoy en formato yyyy-mm-dd
+  const getTodayDateString = () => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  };
+
+    // Lógica para determinar la fecha del pedido según la hora actual
+    const getOrderDateString = () => {
+      const now = new Date();
+      const currentHour = now.getHours();
+      // Entre 12:00 y 15:00 -> hoy
+      if (currentHour >= 12 && currentHour < 15) {
+        return getTodayDateString();
+      }
+      // Entre 1:00 am y 12:00 pm -> hoy
+      if (currentHour >= 1 && currentHour < 12) {
+        return getTodayDateString();
+      }
+      // Después de 15:00 -> mañana
+      if (currentHour >= 15) {
+        return getTomorrowDateString();
+      }
+      // Entre 0:00 y 1:00 am -> hoy
+      if (currentHour < 1) {
+        return getTodayDateString();
+      }
+      // Fallback
+      return getTodayDateString();
+    };
   const [isVerified, setIsVerified] = useState(false);
   const [isNewCustomer, setIsNewCustomer] = useState(false);
   const [orderCount, setOrderCount] = useState(0);
@@ -110,11 +152,31 @@ const ModalBilling = ({ isOpen, onClose, onStartProcessing, orderCode }) => {
     }));
   };
 
+  // Cambia la hora y ajusta la fecha si es fuera de horario
   const handleTimeChange = (hour, minute) => {
+    const h = parseInt(hour, 10);
+    const m = parseInt(minute, 10);
+    const now = new Date();
+    const todayDateStr = getTodayDateString();
+    let selectedDate = todayDateStr;
+
+    // Si la hora seleccionada está fuera del horario de hoy, poner fecha de mañana
+    if (h < BUSINESS_START_HOUR || h > BUSINESS_END_HOUR ||
+      (h === BUSINESS_END_HOUR && m > 0)) {
+      selectedDate = getTomorrowDateString();
+    } else {
+      // Si ya pasó el horario de hoy, también poner fecha de mañana
+      if (now.getHours() > BUSINESS_END_HOUR ||
+        (now.getHours() === BUSINESS_END_HOUR && now.getMinutes() > 0)) {
+        selectedDate = getTomorrowDateString();
+      }
+    }
+
     setCustomerInfo(prev => ({
       ...prev,
-      hour: hour,
-      minute: minute
+      hour,
+      minute,
+      date: selectedDate
     }));
   };
 
@@ -132,38 +194,38 @@ const ModalBilling = ({ isOpen, onClose, onStartProcessing, orderCode }) => {
 
   const validateSelectedTime = () => {
     if (!customerInfo.hour || !customerInfo.minute) return false;
-    
     const hours = parseInt(customerInfo.hour, 10);
     const minutes = parseInt(customerInfo.minute, 10);
-    
-    // Validate hour and minute ranges
+    // Validar rango de hora y minutos
     if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
       return false;
     }
-    
-    // Check if time is within business hours
+    // Solo validar que esté dentro del rango permitido
     if (hours < BUSINESS_START_HOUR || hours > BUSINESS_END_HOUR) {
       return false;
     }
-    
-    // Check if it's not in the past
-    const now = new Date();
-    const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
-    
-    return (hours > currentHour) || (hours === currentHour && minutes > currentMinute);
+    return true;
   };
 
   React.useEffect(() => {
     if (isOpen) {
       const now = new Date();
-      const defaultDate = now.toISOString().split('T')[0];
-      
+      const currentHour = now.getHours();
+      let defaultDate;
+      // Entre 12:00 y 15:00 -> hoy
+      if (currentHour >= 12 && currentHour < 15) {
+        defaultDate = now.toISOString().split('T')[0];
+      } else {
+        // Fuera de ese horario, pedidos para mañana
+        const tomorrow = new Date(now);
+        tomorrow.setDate(now.getDate() + 1);
+        defaultDate = tomorrow.toISOString().split('T')[0];
+      }
       setCustomerInfo(prev => ({
         ...prev,
         date: defaultDate,
-        hour: '12',
-        minute: '00'
+        hour: '',
+        minute: ''
       }));
     }
   }, [isOpen]);
@@ -345,15 +407,15 @@ const ModalBilling = ({ isOpen, onClose, onStartProcessing, orderCode }) => {
     }
 
     // STEP 1: Prepare initial order data for promotion check
-    const initialOrderData = {
-      customerInfo,
-      deliveryType,
-      location,
-      customAddress,
-      items,
-      totalPrice: getTotalPrice(),
-      isNewCustomer
-    };
+        const initialOrderData = {
+          customerInfo,
+          deliveryType,
+          location,
+          customAddress,
+          items,
+          totalPrice: getTotalPrice(),
+          isNewCustomer
+        };
 
     // STEP 2: Check for promotions first
     const promotionResult = await checkPromotions(initialOrderData);
@@ -373,7 +435,8 @@ const ModalBilling = ({ isOpen, onClose, onStartProcessing, orderCode }) => {
       totalPrice: promotionResult.subtotal, // Use subtotal (with discount) as the final price
       discountPercentage: promotionResult.discountPercentage,
       hasPromotions: promotionResult.hasPromotions,
-      isNewCustomer
+      isNewCustomer,
+      delivery_datetime: `${customerInfo.date} ${customerInfo.hour?.toString().padStart(2, '0') || '00'}:${customerInfo.minute?.toString().padStart(2, '0') || '00'}`
     };
 
     // STEP 4: Generate order code and save order (delegate to parent)
@@ -488,37 +551,27 @@ const ModalBilling = ({ isOpen, onClose, onStartProcessing, orderCode }) => {
   };
 
   const handleReviewOrder = async () => {
-    // Validate required fields based on customer type
+    // Validar solo campos básicos
     if (isNewCustomer && !customerInfo.name) {
       alert('Por favor completa tu nombre');
       return;
     }
-    
     if (!customerInfo.phone) {
       alert('Por favor completa el número de teléfono');
       return;
     }
-    
     if (!customerInfo.hour || !customerInfo.minute) {
       alert('Por favor ingresa hora y minutos');
       return;
     }
-    
-    if (!validateSelectedTime()) {
-      alert(`Por favor selecciona una hora válida entre ${BUSINESS_START_HOUR}:00 y ${BUSINESS_END_HOUR}:00`);
-      return;
-    }
-
     if (!deliveryType) {
       alert('Por favor selecciona un tipo de entrega');
       return;
     }
-    
     if (deliveryType === 'delivery' && !location) {
       alert('Por favor obtén tu ubicación o ingresa una dirección');
       return;
     }
-    
     if (deliveryType === 'someone_else' && (!customAddress.street.trim() || !customAddress.number.trim() || !customAddress.neighborhood.trim())) {
       alert('Por favor completa todos los campos de la dirección');
       return;
@@ -896,7 +949,31 @@ const ModalBilling = ({ isOpen, onClose, onStartProcessing, orderCode }) => {
                                     {deliveryType === 'pickup' ? 'Hora de recolección' : 'Hora de entrega'}
                                   </span>
                                 </h4>
-                                
+                                {/* Mensaje si el pedido se levantará para el día siguiente */}
+                                {(() => {
+                                  // Determinar si el pedido es para el día siguiente
+                                  const now = new Date();
+                                  const currentHour = now.getHours();
+                                  const isOutOfBusinessHours = currentHour < BUSINESS_START_HOUR || currentHour >= BUSINESS_END_HOUR;
+                                  // Si la fecha seleccionada es mañana y estamos fuera de horario
+                                  if (customerInfo.date && isOutOfBusinessHours) {
+                                    const today = now.toISOString().slice(0, 10);
+                                    if (customerInfo.date !== today) {
+                                      return (
+                                        <div className="mt-2 p-4 bg-black/40 border border-yellow-500/60 rounded-2xl shadow-xl flex items-center justify-center">
+                                          <p className="text-yellow-300 text-base font-semibold text-center tracking-wide">
+                                            <span className="inline-block align-middle mr-2">
+                                              <svg className="w-5 h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                            </span>
+                                            Estás haciendo un pedido fuera de horario.<br />
+                                            <span className='block text-white text-lg font-bold mt-1'>Tu pedido se levantará para el siguiente día hábil.</span>
+                                          </p>
+                                        </div>
+                                      );
+                                    }
+                                  }
+                                  return null;
+                                })()}
                                 <SelectorClock 
                                   onTimeChange={handleTimeChange}
                                   selectedHour={customerInfo.hour}
@@ -914,12 +991,7 @@ const ModalBilling = ({ isOpen, onClose, onStartProcessing, orderCode }) => {
                       <WhiteButtonIcon
                         text="Revisar Pedido"
                         onClick={handleReviewOrder}
-                        disabled={!isOrderValid()}
-                        className={`justify-center font-bold text-sm rounded-xl transition-all duration-200 h-10 ${
-                          !isOrderValid() 
-                            ? 'opacity-50 cursor-not-allowed' 
-                            : 'hover:scale-[1.02] shadow-lg'
-                        }`}
+                        className="justify-center font-bold text-sm rounded-xl transition-all duration-200 h-10 hover:scale-[1.02] shadow-lg"
                         iconPath="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                       />
                       
